@@ -24,6 +24,17 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 
 ## Entry template
 
+### 2026-08-21 — MT5 clock domains and local process ownership
+
+- Context/evidence: A live Common Files heartbeat carried `TimeTradeServer()` as Unix time, which was several hours ahead of the host UTC clock. The fail-closed reader correctly rejected it as future-dated.
+- Learning/decision: All IPC timestamps and expiry comparisons use `TimeGMT()`/UTC. Broker-server time is market metadata, never protocol wall-clock time.
+- Failed approach: Treating MT5 `datetime` from `TimeTradeServer()` as UTC Unix seconds.
+- Affected files or future action: `ScrapperTradeEA.mq5`; retain live host/EA clock-skew tests.
+
+- Context/evidence: Starting Vite through `npm.cmd` recorded the wrapper PID, leaving its Node child alive after stop and allowing a stale SPA to impersonate the new stack.
+- Learning/decision: Launch the Vite Node entry point directly, record the real PID, and fail startup when loopback ports are occupied.
+- Affected files or future action: `scripts/start.ps1`; add crash/restart E2E coverage during operational hardening.
+
 ### YYYY-MM-DD — Topic
 
 - Context/evidence:
