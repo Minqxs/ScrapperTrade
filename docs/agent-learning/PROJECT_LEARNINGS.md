@@ -24,6 +24,14 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 
 ## Entry template
 
+### 2026-08-21 — Portfolio exposure and session boundaries
+
+- Context/evidence: Deterministic risk tests cover disabled instruments, side permissions, UTC and overnight sessions, duplicate signals, rolling order frequency, and same-direction exposure groups.
+- Learning/decision: Group risk remains the aggregate cap, while a separate same-direction cap models correlated concentration; equality with either cap is allowed and only excess is rejected. Sessions are UTC half-open intervals and overnight sessions retain the configured start day.
+- Failed approach: A position reconciliation query ordered by `DateTimeOffset`, repeating SQLite's unsupported translation; stable logical/broker identifiers now provide deterministic ordering.
+- Affected files or future action: `TradingDomain.cs`, `TradingServices.cs`, and persistence repositories/tests.
+- Supersedes: none.
+
 ### 2026-08-21 — MT5 clock domains and local process ownership
 
 - Context/evidence: A live Common Files heartbeat carried `TimeTradeServer()` as Unix time, which was several hours ahead of the host UTC clock. The fail-closed reader correctly rejected it as future-dated.
