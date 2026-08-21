@@ -15,10 +15,15 @@ builder.Services.AddSingleton<IAuditStore>(_ => new JsonAuditStore(Path.Combine(
 builder.Services.AddSingleton<TradeCoordinator>();
 builder.Services.AddSingleton(new Mt5CommonFilesHeartbeatReader(commonFilesRoot));
 builder.Services.AddSingleton(new Mt5CommonFilesSymbolReader(commonFilesRoot));
+builder.Services.AddSingleton(new Mt5CommonFilesExecutionSnapshotReader(commonFilesRoot));
+builder.Services.AddSingleton(new Mt5CommonFilesCommandQueue(commonFilesRoot));
 builder.Services.AddScoped(_ => new ScrapperTradeDbContext(PersistenceBootstrap.CreateOptions(databasePath)));
 builder.Services.AddScoped<InstrumentRepository>();
 builder.Services.AddScoped<EventRepository>();
 builder.Services.AddScoped<ConfigurationRepository>();
+builder.Services.AddScoped<TradingUniverseRepository>();
+builder.Services.AddScoped<RiskPolicyRepository>();
+builder.Services.AddScoped<PositionRepository>();
 
 var app = builder.Build();
 await PersistenceBootstrap.MigrateAsync(databasePath);
@@ -60,6 +65,10 @@ app.MapGet("/api/mt5/status", (Mt5CommonFilesHeartbeatReader heartbeat) =>
     return Results.Ok(new { connected = snapshot.Connected && snapshot.IsFresh, accountMode = snapshot.AccountMode.ToString().ToUpperInvariant(), accountType = snapshot.PositionMode.ToString().ToUpperInvariant(), emergencyLocked = snapshot.EmergencyLocked, heartbeatAt = snapshot.ObservedAt == DateTimeOffset.MinValue ? (DateTimeOffset?)null : snapshot.ObservedAt, allowsOrderTransmission = snapshot.AllowsOrderTransmission });
 });
 app.MapGet("/api/mt5/symbols", (Mt5CommonFilesSymbolReader symbols) => symbols.Read());
+app.MapGet("/api/positions", (Mt5CommonFilesExecutionSnapshotReader snapshots) =>
+    Results.Ok(snapshots.ReadPositions()?.Items ?? []));
+app.MapGet("/api/orders", (Mt5CommonFilesExecutionSnapshotReader snapshots) =>
+    Results.Ok(snapshots.ReadOrders()?.Items ?? []));
 
 app.MapGet("/api/setup/status", async (InstrumentRepository instruments, Mt5CommonFilesHeartbeatReader heartbeat) =>
 {
@@ -85,9 +94,38 @@ app.MapPut("/api/instruments/{id:guid}", async (Guid id, InstrumentMappingReques
     await instruments.UpsertAsync(record);
     return Results.Ok(new { id = record.Id.ToString("D"), record.LogicalSymbol, record.BrokerSymbol, record.Enabled, valid = !string.IsNullOrWhiteSpace(record.BrokerSymbol) });
 });
+app.MapPost("/api/instruments/{id:guid}/pause", async (Guid id, InstrumentRepository instruments) =>
+{
+    var current = (await instruments.ListAsync()).SingleOrDefault(x => x.Id == id);
+    if (current is null) return Results.NotFound();
+    current.Enabled = false;
+    current.UpdatedAt = DateTimeOffset.UtcNow;
+    await instruments.UpsertAsync(current);
+    return Results.Ok(new { id = current.Id.ToString("D"), current.LogicalSymbol, current.BrokerSymbol, enabled = false, valid = !string.IsNullOrWhiteSpace(current.BrokerSymbol) });
+});
+
+app.MapGet("/api/risk/policy", async (RiskPolicyRepository policies) =>
+{
+    var current = await policies.GetCurrentAsync();
+    return current is null ? Results.Ok(new { configured = false, source = "conservative-demo-defaults", policy = new RiskPolicy() }) : Results.Ok(new { configured = true, source = "user-versioned", version = current.Version, policyJson = current.PolicyJson, current.EffectiveAt, current.ChangedBy, current.ChangeReason });
+});
+app.MapGet("/api/risk/portfolio", (Mt5CommonFilesExecutionSnapshotReader snapshots) =>
+{
+    var positions = snapshots.ReadPositions();
+    var items = positions?.Items ?? [];
+    return Results.Ok(new
+    {
+        snapshotAt = positions?.ObservedAt,
+        positionCount = items.Count,
+        symbols = items.GroupBy(x => x.Symbol).Select(group => new { symbol = group.Key, positions = group.Count(), volume = group.Sum(x => x.Volume), profit = group.Sum(x => x.Profit) }),
+        totalProfit = items.Sum(x => x.Profit)
+    });
+});
 
 app.MapGet("/api/audit", async (EventRepository events) => await events.ReadAuditAsync());
 app.MapPost("/api/positions/close-all", () => Results.Conflict(new { accepted = false, reason = "Position reconciliation and verified close workflow are not available yet." }));
+app.MapPost("/api/positions/{ticket:long}/close", (long ticket) => Results.Conflict(new { accepted = false, ticket, reason = "Close requires persisted attribution and a fresh reconciled broker snapshot." }));
+app.MapPost("/api/strategies/{id}/pause", (string id) => Results.StatusCode(StatusCodes.Status501NotImplemented));
 app.MapPost("/api/trades/simulate", (TradeRequest request, TradeCoordinator coordinator) =>
 {
     var trade = new CandidateTrade(Guid.NewGuid(), request.StrategyId, 1, request.Symbol, request.Side, request.Entry, request.Stop, request.Target, request.Spread, DateTimeOffset.UtcNow, 1, "Manual demo simulation");
