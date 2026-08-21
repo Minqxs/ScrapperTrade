@@ -1,9 +1,11 @@
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using ScrapperTrade.Application;
 using ScrapperTrade.Domain;
 using ScrapperTrade.Infrastructure;
 using ScrapperTrade.Infrastructure.Knowledge;
 using ScrapperTrade.Infrastructure.Persistence;
+using ScrapperTrade.Infrastructure.StrategyGovernance;
 
 var builder = WebApplication.CreateBuilder(args);
 var databasePath = LocalDataPath.GetDatabasePath();
@@ -29,6 +31,11 @@ builder.Services.AddScoped<TradingUniverseRepository>();
 builder.Services.AddScoped<RiskPolicyRepository>();
 builder.Services.AddScoped<PositionRepository>();
 builder.Services.AddScoped<KnowledgeService>();
+builder.Services.AddScoped<StrategyDefinitionRepository>();
+builder.Services.AddScoped<BacktestEvidenceRepository>();
+builder.Services.AddScoped<ResearchGovernanceRepository>();
+builder.Services.AddScoped<ShadowComparisonRepository>();
+builder.Services.AddScoped<UserStrategyGovernanceRepository>();
 
 var app = builder.Build();
 await PersistenceBootstrap.MigrateAsync(databasePath);
@@ -128,6 +135,48 @@ app.MapGet("/api/risk/portfolio", (Mt5CommonFilesExecutionSnapshotReader snapsho
 });
 
 app.MapGet("/api/audit", async (EventRepository events) => await events.ReadAuditAsync());
+app.MapGet("/api/system/events", async (EventRepository events) => await events.ReadSystemEventsAsync());
+app.MapGet("/api/health/diagnostics", async (ScrapperTradeDbContext db, Mt5CommonFilesHeartbeatReader heartbeat) =>
+{
+    var now = DateTimeOffset.UtcNow;
+    var mt5 = heartbeat.Read(now);
+    var databaseHealthy = await db.Database.CanConnectAsync();
+    var checks = new[]
+    {
+        new { id = "database", label = "Local database", status = databaseHealthy ? "HEALTHY" : "UNHEALTHY", detail = databaseHealthy ? "SQLite is reachable and migrations are applied." : "SQLite is unavailable.", lastSuccessAt = databaseHealthy ? now : (DateTimeOffset?)null, recovery = databaseHealthy ? null : "Restart the host and run scripts/doctor.ps1." },
+        new { id = "mt5", label = "MT5 DEMO heartbeat", status = mt5.IsPositiveDemo ? "HEALTHY" : "DEGRADED", detail = mt5.IsPositiveDemo ? "Fresh connected DEMO account verified." : "No fresh positive DEMO heartbeat; execution remains blocked.", lastSuccessAt = mt5.IsPositiveDemo ? mt5.ObservedAt : (DateTimeOffset?)null, recovery = mt5.IsPositiveDemo ? null : "Refresh or reattach the locked EA on the DEMO account." },
+        new { id = "execution", label = "Execution authority", status = "DEGRADED", detail = "Broker transmission is intentionally locked during validation.", lastSuccessAt = (DateTimeOffset?)null, recovery = (string?)"Complete release validation before any explicit DEMO unlock." }
+    };
+    return Results.Ok(new { overall = checks.Any(x => x.status == "UNHEALTHY") ? "UNHEALTHY" : checks.Any(x => x.status == "DEGRADED") ? "DEGRADED" : "HEALTHY", checkedAt = now, checks });
+});
+app.MapGet("/api/recovery/status", async (ScrapperTradeDbContext db, Mt5CommonFilesExecutionSnapshotReader snapshots) =>
+{
+    var databaseHealthy = await db.Database.CanConnectAsync();
+    var positions = snapshots.ReadPositions();
+    return Results.Ok(new { cleanShutdown = (bool?)null, reconciliationRequired = positions is null, queueDepth = 0, staleCommands = 0, lastBackupAt = (DateTimeOffset?)null, databaseStatus = databaseHealthy ? "HEALTHY" : "UNHEALTHY", detail = positions is null ? "A fresh MT5 position snapshot is required before broker actions." : "Broker snapshot is available; no command was sent." });
+});
+app.MapGet("/api/settings/providers", async (ConfigurationRepository configuration) =>
+{
+    var openAiEnabled = string.Equals((await configuration.FindAsync("provider.openai.enabled"))?.Value, "true", StringComparison.OrdinalIgnoreCase);
+    var openAiModel = (await configuration.FindAsync("provider.openai.model"))?.Value;
+    var openAiConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY")) && !string.IsNullOrWhiteSpace(openAiModel);
+    return Results.Ok(new object[]
+    {
+        new { id = "MANUAL_CHATGPT", name = "Manual ChatGPT", enabled = true, configured = true, optional = false, status = "READY", detail = "Copy/import workflow; no API billing required.", model = (string?)null },
+        new { id = "LOCAL", name = "Local provider", enabled = false, configured = false, optional = true, status = "NOT_CONFIGURED", detail = "No supported local model endpoint is configured.", model = (string?)null },
+        new { id = "OPENAI", name = "OpenAI API", enabled = openAiEnabled && openAiConfigured, configured = openAiConfigured, optional = true, status = openAiConfigured ? openAiEnabled ? "READY" : "DISABLED" : "NOT_CONFIGURED", detail = openAiConfigured ? "Credential detected outside the browser and repository." : "Set a newly rotated OPENAI_API_KEY for the host process and choose a model.", model = openAiModel }
+    });
+});
+app.MapPut("/api/settings/providers/{id}", async (string id, ProviderUpdateRequest request, ConfigurationRepository configuration) =>
+{
+    if (!string.Equals(id, "OPENAI", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest(new { message = "Only the optional OpenAI provider is configurable in this build." });
+    if (request.Model?.Length > 100) return Results.BadRequest(new { message = "Model identifier is too long." });
+    if (request.Enabled && (string.IsNullOrWhiteSpace(request.Model) || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENAI_API_KEY"))))
+        return Results.Conflict(new { message = "A newly rotated host-side OPENAI_API_KEY and explicit model are required before enabling this optional provider." });
+    await configuration.SetAsync("provider.openai.enabled", request.Enabled ? "true" : "false", DateTimeOffset.UtcNow);
+    if (!string.IsNullOrWhiteSpace(request.Model)) await configuration.SetAsync("provider.openai.model", request.Model.Trim(), DateTimeOffset.UtcNow);
+    return Results.Ok(new { id = "OPENAI", name = "OpenAI API", enabled = request.Enabled, configured = true, optional = true, status = request.Enabled ? "READY" : "DISABLED", model = request.Model?.Trim() });
+});
 app.MapPost("/api/positions/close-all", () => Results.Conflict(new { accepted = false, reason = "Position reconciliation and verified close workflow are not available yet." }));
 app.MapPost("/api/positions/{ticket:long}/close", (long ticket) => Results.Conflict(new { accepted = false, ticket, reason = "Close requires persisted attribution and a fresh reconciled broker snapshot." }));
 app.MapPost("/api/strategies/{id}/pause", (string id) => Results.StatusCode(StatusCodes.Status501NotImplemented));
@@ -171,14 +220,39 @@ app.MapPost("/api/knowledge/sources", async (IFormFile file, KnowledgeService kn
     }
 }).DisableAntiforgery();
 
-app.MapGet("/api/strategies", () => Results.Ok(Array.Empty<object>()));
-app.MapGet("/api/strategies/{id}", (string id) => Results.NotFound(new { message = $"Strategy '{id}' was not found." }));
-app.MapPut("/api/strategies/{id}", (string id) => Results.StatusCode(StatusCodes.Status501NotImplemented));
-app.MapGet("/api/backtests", () => Results.Ok(Array.Empty<object>()));
-app.MapGet("/api/backtests/{id}", (string id) => Results.NotFound(new { message = $"Backtest '{id}' was not found." }));
-app.MapPost("/api/backtests", () => Results.StatusCode(StatusCodes.Status501NotImplemented));
-app.MapGet("/api/research/candidates", () => Results.Ok(Array.Empty<object>()));
-app.MapPost("/api/research/candidates/{id}/approve-validation", (string id) => Results.NotFound(new { message = $"Research candidate '{id}' was not found." }));
+app.MapGet("/api/strategies", async (ScrapperTradeDbContext db) =>
+    Results.Ok((await db.StrategyDefinitions.AsNoTracking().Include(x => x.Versions).OrderBy(x => x.Key).ToListAsync())
+        .Select(x => JsonSerializer.Deserialize<JsonElement>(x.Versions.OrderByDescending(v => v.Version).First().SpecificationJson)).ToArray()));
+app.MapGet("/api/strategies/{id}", async (string id, ScrapperTradeDbContext db) =>
+{
+    var definition = await db.StrategyDefinitions.AsNoTracking().Include(x => x.Versions).SingleOrDefaultAsync(x => x.Key == id.ToLower());
+    return definition is null ? Results.NotFound(new { message = $"Strategy '{id}' was not found." }) : Results.Ok(JsonSerializer.Deserialize<JsonElement>(definition.Versions.OrderByDescending(x => x.Version).First().SpecificationJson));
+});
+app.MapPut("/api/strategies/{id}", async (string id, JsonElement strategy, ScrapperTradeDbContext db, StrategyDefinitionRepository definitions) =>
+{
+    if (strategy.ValueKind != JsonValueKind.Object) return Results.BadRequest(new { message = "A constrained strategy object is required." });
+    var name = strategy.TryGetProperty("name", out var nameValue) ? nameValue.GetString() : null;
+    if (string.IsNullOrWhiteSpace(name)) return Results.BadRequest(new { message = "Strategy name is required." });
+    var json = strategy.GetRawText();
+    var current = await db.StrategyDefinitions.SingleOrDefaultAsync(x => x.Key == id.ToLower());
+    if (current is null) await definitions.CreateAsync(id, name, strategy.TryGetProperty("description", out var description) ? description.GetString() ?? "" : "", json, DateTimeOffset.UtcNow);
+    else await definitions.AddImmutableVersionAsync(current.Id, json, await db.StrategyVersions.Where(x => x.StrategyDefinitionId == current.Id).OrderByDescending(x => x.Version).Select(x => (Guid?)x.Id).FirstAsync(), null, "User saved a new immutable strategy version.", DateTimeOffset.UtcNow);
+    return Results.Ok(strategy);
+});
+app.MapGet("/api/backtests", async (ScrapperTradeDbContext db) => Results.Ok((await db.BacktestRuns.AsNoTracking().Include(x => x.Metrics).ToListAsync()).OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).ToArray()));
+app.MapGet("/api/backtests/{id:guid}", async (Guid id, ScrapperTradeDbContext db) =>
+{
+    var run = await db.BacktestRuns.AsNoTracking().Include(x => x.Metrics).Include(x => x.Trades).SingleOrDefaultAsync(x => x.Id == id);
+    return run is null ? Results.NotFound(new { message = $"Backtest '{id}' was not found." }) : Results.Ok(run);
+});
+app.MapPost("/api/backtests", () => Results.Conflict(new { message = "A historical dataset must be selected before a persisted backtest can be queued." }));
+app.MapGet("/api/research/candidates", async (ScrapperTradeDbContext db) => Results.Ok((await db.ResearchCandidates.AsNoTracking().Include(x => x.Provenance).ToListAsync()).OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).ToArray()));
+app.MapPost("/api/research/candidates/{id:guid}/approve-validation", async (Guid id, ScrapperTradeDbContext db) =>
+{
+    var candidate = await db.ResearchCandidates.AsNoTracking().Include(x => x.Provenance).SingleOrDefaultAsync(x => x.Id == id);
+    if (candidate is null) return Results.NotFound(new { message = $"Research candidate '{id}' was not found." });
+    return Results.Conflict(new { message = candidate.HasUnresolvedAmbiguities ? "Unresolved ambiguities block validation approval." : "Passed validation evidence is required; approval cannot activate or promote a strategy." });
+});
 app.MapPost("/api/trades/simulate", (TradeRequest request, TradeCoordinator coordinator) =>
 {
     var trade = new CandidateTrade(Guid.NewGuid(), request.StrategyId, 1, request.Symbol, request.Side, request.Entry, request.Stop, request.Target, request.Spread, DateTimeOffset.UtcNow, 1, "Manual demo simulation");
@@ -192,4 +266,5 @@ static Task RecordSystemEvent(EventRepository events, SystemStateSnapshot snapsh
 
 public sealed record InstrumentMappingRequest(Guid Id, string LogicalSymbol, string? BrokerSymbol, bool Enabled);
 public sealed record TradeRequest(string StrategyId, string Symbol, Side Side, decimal Entry, decimal Stop, decimal Target, decimal Spread, decimal Equity, decimal TickSize, decimal TickValue, decimal VolumeMin, decimal VolumeMax, decimal VolumeStep, string ExposureGroup);
+public sealed record ProviderUpdateRequest(bool Enabled, string? Model);
 public partial class Program;
