@@ -1,0 +1,37 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  backend:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - name: Restore
+        run: dotnet restore ScrapperTrade.sln
+      - name: Build
+        run: dotnet build ScrapperTrade.sln --no-restore --configuration Release
+      - name: Test
+        run: dotnet run --project tests/ScrapperTrade.Tests/ScrapperTrade.Tests.csproj --no-build --configuration Release
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/scrappertrade-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/scrappertrade-ui/package-lock.json }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2

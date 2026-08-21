@@ -1,0 +1,11 @@
+import { describe, expect, it } from 'vitest';
+import { emergencyPhraseValid, executionAllowed } from './safety';
+describe('control-centre safety gates', () => {
+  it.each(['REAL','CONTEST','UNKNOWN','DISCONNECTED'])('rejects %s execution', account => expect(executionAllowed(account,false,false)).toBe(false));
+  it('requires demo, unlocked, and unpaused state', () => {
+    expect(executionAllowed('DEMO',false,false)).toBe(true);
+    expect(executionAllowed('DEMO',true,false)).toBe(false);
+    expect(executionAllowed('DEMO',false,true)).toBe(false);
+  });
+  it('requires the exact emergency phrase', () => { expect(emergencyPhraseValid('emergency')).toBe(false); expect(emergencyPhraseValid('EMERGENCY')).toBe(true); });
+});

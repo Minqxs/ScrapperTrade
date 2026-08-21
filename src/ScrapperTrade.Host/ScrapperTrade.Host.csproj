@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ScrapperTrade.Domain\ScrapperTrade.Domain.csproj" />
+    <ProjectReference Include="..\ScrapperTrade.Application\ScrapperTrade.Application.csproj" />
+    <ProjectReference Include="..\ScrapperTrade.Infrastructure\ScrapperTrade.Infrastructure.csproj" />
+    <ProjectReference Include="..\ScrapperTrade.Quant\ScrapperTrade.Quant.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>
