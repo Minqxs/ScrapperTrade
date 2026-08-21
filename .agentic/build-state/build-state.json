@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "project": "ScrapperTrade",
-  "updatedAt": "2026-08-21T13:05:00+02:00",
-  "currentBucket": "bucket-1-local-application-foundation",
-  "currentTask": "bucket-integration-review",
+  "updatedAt": "2026-08-21T13:22:00+02:00",
+  "currentBucket": "bucket-3-4-execution-risk",
+  "currentTask": "execution-risk-integration-review",
   "status": "in_progress",
-  "branch": "run/bucket-1-local-foundation",
+  "branch": "run/bucket-3-4-execution-risk",
   "commit": null,
   "pullRequest": null,
   "testState": {
@@ -20,7 +20,11 @@
       { "command": "dotnet run tests/ScrapperTrade.Tests", "outcome": "passed: 17/17 combined safety, quant, authority and MT5 bridge checks", "timestamp": "2026-08-21T13:00:00+02:00", "commit": "e159d90" },
       { "command": "dotnet test ScrapperTrade.Infrastructure.Tests", "outcome": "passed: 4/4 migration-backed SQLite integration tests", "timestamp": "2026-08-21T13:00:00+02:00", "commit": "e159d90" },
       { "command": "npm test; npm run lint; npm run build", "outcome": "passed: 11/11 frontend tests, lint and production build", "timestamp": "2026-08-21T13:00:00+02:00", "commit": "e159d90" },
-      { "command": "start; probe API through Vite proxy; stop", "outcome": "passed: migration startup and five live endpoints; stale process and UTC defects repaired", "timestamp": "2026-08-21T13:00:00+02:00", "commit": "e159d90" }
+      { "command": "start; probe API through Vite proxy; stop", "outcome": "passed: migration startup and five live endpoints; stale process and UTC defects repaired", "timestamp": "2026-08-21T13:00:00+02:00", "commit": "e159d90" },
+      { "command": "dotnet run ScrapperTrade.Tests", "outcome": "passed: 35/35 combined safety, execution, risk and market checks", "timestamp": "2026-08-21T13:20:00+02:00", "commit": "e84ba50" },
+      { "command": "dotnet test ScrapperTrade.Infrastructure.Tests", "outcome": "passed: 7/7 migration-backed persistence tests", "timestamp": "2026-08-21T13:20:00+02:00", "commit": "e84ba50" },
+      { "command": "npm test; npm run lint; npm run build", "outcome": "passed: 13/13 portfolio UI tests, lint and production build", "timestamp": "2026-08-21T13:20:00+02:00", "commit": "e84ba50" },
+      { "command": "start; probe portfolio API through Vite proxy; stop", "outcome": "passed: positions, orders, symbols, policy, exposure and instruments returned honest live/empty state", "timestamp": "2026-08-21T13:21:00+02:00", "commit": "e84ba50" }
     ]
   },
   "reviewerState": { "status": "partial", "findings": ["Full platform and visual/MT5/release reviews remain pending."] },
@@ -33,11 +37,11 @@
   ],
   "buckets": [
     { "id": 0, "name": "Bootstrap and Engineering System", "status": "completed", "dependsOn": [] },
-    { "id": 1, "name": "Local Application Foundation", "status": "in_progress", "dependsOn": [0] },
+    { "id": 1, "name": "Local Application Foundation", "status": "completed", "dependsOn": [0] },
     { "id": 2, "name": "MT5 Bridge", "status": "in_progress", "dependsOn": [0,1] },
-    { "id": 3, "name": "Manual Execution and Safety", "status": "planned", "dependsOn": [2] },
-    { "id": 4, "name": "Instruments, Positions and Portfolio Risk", "status": "planned", "dependsOn": [1,2,3] },
-    { "id": 5, "name": "Market Intelligence", "status": "planned", "dependsOn": [2] },
+    { "id": 3, "name": "Manual Execution and Safety", "status": "in_progress", "dependsOn": [2] },
+    { "id": 4, "name": "Instruments, Positions and Portfolio Risk", "status": "in_progress", "dependsOn": [1,2,3] },
+    { "id": 5, "name": "Market Intelligence", "status": "in_progress", "dependsOn": [2] },
     { "id": 6, "name": "Strategy and Backtesting", "status": "planned", "dependsOn": [4,5] },
     { "id": 7, "name": "Autonomous Demo Trading", "status": "planned", "dependsOn": [3,4,5,6] },
     { "id": 8, "name": "Trading Knowledge System", "status": "planned", "dependsOn": [1] },
