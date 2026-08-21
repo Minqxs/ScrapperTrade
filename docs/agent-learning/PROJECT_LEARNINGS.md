@@ -38,6 +38,15 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Learning/decision: Private inputs use SHA-256 content-addressed paths outside Git; original filenames are metadata only. SQLite FTS5 is maintained by migration-owned triggers, while chunks retain character offsets for inspectable provenance.
 - Failed approach: On Windows, keeping the hash input stream alive until method exit prevented the staging file's atomic move. The stream must close before `File.Move`.
 - Affected files or future action: `Infrastructure/Knowledge`, `OfflineKnowledgeFoundation` migration, and knowledge ingestion architecture documentation.
+
+- Supersedes: none.
+
+### 2026-08-21 — Research evidence is not activation authority
+
+- Context/evidence: Migration-backed governance tests validate candidate provenance, ambiguity blocking, research-only validation, explicit user confirmation, shadow comparison, promotion, and retirement.
+- Learning/decision: `DRAFT -> VALIDATED` belongs to research evidence; `VALIDATED -> ACTIVE`, promotion, and retirement belong to a separate user governance surface and append-only audit. A filtered unique SQLite index enforces one open activation per strategy definition.
+- Failed approach: none.
+- Affected files or future action: `StrategyGovernance` persistence and architecture documentation; preserve this split when APIs and background research orchestration are added.
 - Supersedes: none.
 
 ### 2026-08-21 — MT5 clock domains and local process ownership
