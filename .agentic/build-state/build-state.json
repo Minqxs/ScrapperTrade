@@ -15,7 +15,8 @@
       { "command": "dotnet run --project tests/ScrapperTrade.Tests/ScrapperTrade.Tests.csproj", "outcome": "passed: 9/9 safety and quant checks", "timestamp": "2026-08-21T11:35:00+02:00", "commit": null },
       { "command": "npm.cmd test -- --run && npm.cmd run build", "outcome": "passed: 6/6 tests and production build", "timestamp": "2026-08-21T11:35:00+02:00", "commit": null },
       { "command": "scripts/start.ps1 -NoBrowser; GET /api/health; GET UI; scripts/stop.ps1", "outcome": "passed: API 200, UI 200, both processes stopped", "timestamp": "2026-08-21T11:42:00+02:00", "commit": null },
-      { "command": "scripts/compile-ea.ps1", "outcome": "passed: installed MetaEditor reported 0 errors and 0 warnings", "timestamp": "2026-08-21T12:04:00+02:00", "commit": "8408cc3" }
+      { "command": "scripts/compile-ea.ps1", "outcome": "passed: installed MetaEditor reported 0 errors and 0 warnings", "timestamp": "2026-08-21T12:04:00+02:00", "commit": "8408cc3" },
+      { "command": "Read Common Files ScrapperTrade heartbeat", "outcome": "passed: fresh heartbeat reported accountMode DEMO, connected true, emergencyLocked true", "timestamp": "2026-08-21T12:20:09+02:00", "commit": null }
     ]
   },
   "reviewerState": { "status": "partial", "findings": ["Full platform and visual/MT5/release reviews remain pending."] },
@@ -24,7 +25,7 @@
     { "id": "github-cli-auth", "status": "blocked-external", "detail": "Git Credential Manager can push, but the GitHub CLI token for Minqxs is invalid; authenticated PR/review/merge operations remain unavailable." }
   ],
   "humanDependencies": [
-    { "id": "mt5-demo-login", "status": "pending-external", "scope": "Complete demo account creation/login and attach the locked EA for heartbeat verification" },
+    { "id": "mt5-demo-login", "status": "resolved", "scope": "Positive DEMO hedging account heartbeat verified while emergency-locked on 2026-08-21" },
     { "id": "metaeditor", "status": "resolved", "scope": "EA compiled locally with 0 errors and 0 warnings on 2026-08-21" },
     { "id": "github-login", "status": "partial", "scope": "Git push works; gh must be reauthenticated for PR, Actions, review and merge workflow" }
   ],
