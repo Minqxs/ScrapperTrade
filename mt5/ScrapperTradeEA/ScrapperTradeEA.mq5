@@ -62,7 +62,7 @@ void WriteHeartbeat()
    ENUM_ACCOUNT_MARGIN_MODE margin_mode = (ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE);
    string position_mode = margin_mode == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING ? "HEDGING" : "NETTING";
    string payload = StringFormat("{\"sequence\":%I64u,\"time\":%I64d,\"accountMode\":\"%s\",\"positionMode\":\"%s\",\"connected\":%s,\"emergencyLocked\":%s}",
-      sequence, (long)TimeTradeServer(), mode, position_mode,
+      sequence, (long)TimeGMT(), mode, position_mode,
       TerminalInfoInteger(TERMINAL_CONNECTED) ? "true" : "false",
       EmergencyLocked ? "true" : "false");
    WriteAtomic(QueuePath("heartbeat.json"), payload);
@@ -120,7 +120,7 @@ void Reject(const string id, const string reason)
    string safe_reason = reason;
    StringReplace(safe_reason, "\"", "'");
    WriteAtomic(QueuePath("results\\" + id + ".json"),
-      StringFormat("{\"commandId\":\"%s\",\"accepted\":false,\"reason\":\"%s\",\"time\":%I64d}", id, safe_reason, (long)TimeTradeServer()));
+      StringFormat("{\"commandId\":\"%s\",\"accepted\":false,\"reason\":\"%s\",\"time\":%I64d}", id, safe_reason, (long)TimeGMT()));
    Remember(id);
 }
 
@@ -142,7 +142,7 @@ void ProcessCommand(const string filename)
    long created = (long)StringToInteger(fields[1]);
    long expires = ArraySize(fields) >= 11 ? (long)StringToInteger(fields[10]) : created + MaximumCommandAgeSeconds;
    ulong command_sequence = ArraySize(fields) >= 10 ? (ulong)StringToInteger(fields[9]) : 0;
-   long now = (long)TimeTradeServer();
+   long now = (long)TimeGMT();
    if(created <= 0 || created > now + 1 || expires <= now || now - created > MaximumCommandAgeSeconds) { Reject(id, "stale-command"); return; }
    if(command_sequence == 0 || command_sequence <= last_command_sequence) { Reject(id, "invalid-command-sequence"); return; }
    last_command_sequence = command_sequence;

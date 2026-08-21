@@ -6,6 +6,8 @@
 *.tsbuildinfo
 *.ex5
 runtime/
+.worktrees/
+workspace/.worktrees/
 *.user
 *.suo
 *.db

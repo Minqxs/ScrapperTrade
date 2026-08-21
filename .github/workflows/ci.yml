@@ -16,6 +16,8 @@ jobs:
         run: dotnet build ScrapperTrade.sln --no-restore --configuration Release
       - name: Test
         run: dotnet run --project tests/ScrapperTrade.Tests/ScrapperTrade.Tests.csproj --no-build --configuration Release
+      - name: Persistence integration tests
+        run: dotnet test tests/ScrapperTrade.Infrastructure.Tests/ScrapperTrade.Infrastructure.Tests.csproj --no-build --configuration Release
   frontend:
     runs-on: ubuntu-latest
     defaults:

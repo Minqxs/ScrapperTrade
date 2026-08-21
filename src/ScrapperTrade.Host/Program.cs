@@ -1,5 +1,104 @@
-using ScrapperTrade.Application;using ScrapperTrade.Domain;using ScrapperTrade.Infrastructure;
-var b=WebApplication.CreateBuilder(args);b.Services.AddSingleton<TradingSystemState>();b.Services.AddSingleton(new RiskPolicy());b.Services.AddSingleton<PortfolioRiskEngine>();b.Services.AddSingleton<IExecutionAdapter>(_=>new DemoExecutionSimulator(AccountKind.Demo));var path=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ScrapperTrade","audit.json");b.Services.AddSingleton<IAuditStore>(_=>new JsonAuditStore(path));b.Services.AddSingleton<TradeCoordinator>();var app=b.Build();
-app.MapGet("/api/health",(TradingSystemState s)=>Results.Ok(new{status="healthy",mode=s.Mode,demoOnly=true}));app.MapGet("/api/system",(TradingSystemState s)=>new{s.Mode,s.AllowsNewEntries});app.MapPost("/api/system/start",(TradingSystemState s)=>{s.Start();return Results.Ok(new{s.Mode});});app.MapPost("/api/system/pause",(TradingSystemState s)=>{s.Pause();return Results.Ok(new{s.Mode});});app.MapPost("/api/system/emergency-stop",(TradingSystemState s,IAuditStore a)=>{s.EmergencyLock();a.Append(new(Guid.NewGuid(),DateTimeOffset.UtcNow,"EMERGENCY","LOCKED","User emergency stop activated."));return Results.Ok(new{s.Mode});});app.MapPost("/api/system/user-unlock",(TradingSystemState s)=>{s.UserUnlockToPaused();return Results.Ok(new{s.Mode});});app.MapGet("/api/audit",(IAuditStore a)=>a.ReadAll());
-app.MapPost("/api/trades/simulate",(TradeRequest x,TradeCoordinator c)=>{var t=new CandidateTrade(Guid.NewGuid(),x.StrategyId,1,x.Symbol,x.Side,x.Entry,x.Stop,x.Target,x.Spread,DateTimeOffset.UtcNow,1,"Manual demo simulation");var m=new SymbolMetadata(x.Symbol,x.TickSize,x.TickValue,1,x.VolumeMin,x.VolumeMax,x.VolumeStep);return c.Submit(t,m,new(x.Equity,0,[]),x.ExposureGroup,DateTimeOffset.UtcNow);});app.Run();
-public sealed record TradeRequest(string StrategyId,string Symbol,Side Side,decimal Entry,decimal Stop,decimal Target,decimal Spread,decimal Equity,decimal TickSize,decimal TickValue,decimal VolumeMin,decimal VolumeMax,decimal VolumeStep,string ExposureGroup);
+using ScrapperTrade.Application;
+using ScrapperTrade.Domain;
+using ScrapperTrade.Infrastructure;
+using ScrapperTrade.Infrastructure.Persistence;
+
+var builder = WebApplication.CreateBuilder(args);
+var databasePath = LocalDataPath.GetDatabasePath();
+var commonFilesRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MetaQuotes", "Terminal", "Common", "Files");
+builder.Services.AddSingleton<TradingSystemState>();
+builder.Services.AddSingleton<SystemStateMachine>();
+builder.Services.AddSingleton(new RiskPolicy());
+builder.Services.AddSingleton<PortfolioRiskEngine>();
+builder.Services.AddSingleton<IExecutionAdapter>(_ => new DemoExecutionSimulator(AccountKind.Demo));
+builder.Services.AddSingleton<IAuditStore>(_ => new JsonAuditStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ScrapperTrade", "audit.json")));
+builder.Services.AddSingleton<TradeCoordinator>();
+builder.Services.AddSingleton(new Mt5CommonFilesHeartbeatReader(commonFilesRoot));
+builder.Services.AddSingleton(new Mt5CommonFilesSymbolReader(commonFilesRoot));
+builder.Services.AddScoped(_ => new ScrapperTradeDbContext(PersistenceBootstrap.CreateOptions(databasePath)));
+builder.Services.AddScoped<InstrumentRepository>();
+builder.Services.AddScoped<EventRepository>();
+builder.Services.AddScoped<ConfigurationRepository>();
+
+var app = builder.Build();
+await PersistenceBootstrap.MigrateAsync(databasePath);
+
+app.MapGet("/api/health", (SystemStateMachine system, Mt5CommonFilesHeartbeatReader heartbeat) =>
+{
+    var mt5 = heartbeat.Read(DateTimeOffset.UtcNow);
+    return Results.Ok(new { status = mt5.IsPositiveDemo ? "healthy" : "degraded", mode = system.Snapshot.Mode, demoOnly = true });
+});
+app.MapGet("/api/system", (SystemStateMachine system) => system.Snapshot);
+app.MapPost("/api/system/start", async (SystemStateMachine system, EventRepository events) =>
+{
+    var snapshot = system.Start(DateTimeOffset.UtcNow);
+    await RecordSystemEvent(events, snapshot, "SYSTEM_STARTED");
+    return Results.Ok(snapshot);
+});
+app.MapPost("/api/system/pause", async (SystemStateMachine system, EventRepository events) =>
+{
+    var snapshot = system.Pause(DateTimeOffset.UtcNow);
+    await RecordSystemEvent(events, snapshot, "NEW_ENTRIES_PAUSED");
+    return Results.Ok(snapshot);
+});
+app.MapPost("/api/system/emergency-stop", async (SystemStateMachine system, EventRepository events) =>
+{
+    var snapshot = system.EmergencyLock(DateTimeOffset.UtcNow, "User activated emergency stop");
+    await RecordSystemEvent(events, snapshot, "EMERGENCY_LOCKED");
+    return Results.Ok(snapshot);
+});
+app.MapPost("/api/system/user-unlock", async (SystemStateMachine system, EventRepository events) =>
+{
+    var snapshot = system.UserUnlockToPaused(DateTimeOffset.UtcNow, "User explicitly unlocked emergency state");
+    await RecordSystemEvent(events, snapshot, "EMERGENCY_USER_UNLOCKED");
+    return Results.Ok(snapshot);
+});
+
+app.MapGet("/api/mt5/status", (Mt5CommonFilesHeartbeatReader heartbeat) =>
+{
+    var snapshot = heartbeat.Read(DateTimeOffset.UtcNow);
+    return Results.Ok(new { connected = snapshot.Connected && snapshot.IsFresh, accountMode = snapshot.AccountMode.ToString().ToUpperInvariant(), accountType = snapshot.PositionMode.ToString().ToUpperInvariant(), emergencyLocked = snapshot.EmergencyLocked, heartbeatAt = snapshot.ObservedAt == DateTimeOffset.MinValue ? (DateTimeOffset?)null : snapshot.ObservedAt, allowsOrderTransmission = snapshot.AllowsOrderTransmission });
+});
+app.MapGet("/api/mt5/symbols", (Mt5CommonFilesSymbolReader symbols) => symbols.Read());
+
+app.MapGet("/api/setup/status", async (InstrumentRepository instruments, Mt5CommonFilesHeartbeatReader heartbeat) =>
+{
+    var mt5 = heartbeat.Read(DateTimeOffset.UtcNow);
+    var mappings = await instruments.ListAsync();
+    var mapped = mappings.Any(x => x.Enabled && !string.IsNullOrWhiteSpace(x.BrokerSymbol));
+    var steps = new[]
+    {
+        new { id = "database", label = "Local database", complete = true, detail = databasePath },
+        new { id = "mt5", label = "Connected DEMO account", complete = mt5.IsPositiveDemo, detail = mt5.AccountMode.ToString() },
+        new { id = "emergency", label = "EA safety lock verified", complete = mt5.EmergencyLocked, detail = mt5.EmergencyLocked ? "Locked" : "Unlocked" },
+        new { id = "mapping", label = "At least one enabled symbol mapping", complete = mapped, detail = mapped ? "Configured" : "Required" }
+    };
+    return Results.Ok(new { complete = steps.All(x => x.complete), steps });
+});
+
+app.MapGet("/api/instruments", async (InstrumentRepository instruments) =>
+    (await instruments.ListAsync()).Select(x => new { id = x.Id.ToString("D"), logicalSymbol = x.LogicalSymbol, brokerSymbol = x.BrokerSymbol, enabled = x.Enabled, valid = !string.IsNullOrWhiteSpace(x.BrokerSymbol) }));
+app.MapPut("/api/instruments/{id:guid}", async (Guid id, InstrumentMappingRequest request, InstrumentRepository instruments) =>
+{
+    if (request.Id != id || string.IsNullOrWhiteSpace(request.LogicalSymbol)) return Results.BadRequest();
+    var record = new InstrumentRecord { Id = id, LogicalSymbol = request.LogicalSymbol, BrokerSymbol = string.IsNullOrWhiteSpace(request.BrokerSymbol) ? null : request.BrokerSymbol.Trim(), Enabled = request.Enabled && !string.IsNullOrWhiteSpace(request.BrokerSymbol), UpdatedAt = DateTimeOffset.UtcNow };
+    await instruments.UpsertAsync(record);
+    return Results.Ok(new { id = record.Id.ToString("D"), record.LogicalSymbol, record.BrokerSymbol, record.Enabled, valid = !string.IsNullOrWhiteSpace(record.BrokerSymbol) });
+});
+
+app.MapGet("/api/audit", async (EventRepository events) => await events.ReadAuditAsync());
+app.MapPost("/api/positions/close-all", () => Results.Conflict(new { accepted = false, reason = "Position reconciliation and verified close workflow are not available yet." }));
+app.MapPost("/api/trades/simulate", (TradeRequest request, TradeCoordinator coordinator) =>
+{
+    var trade = new CandidateTrade(Guid.NewGuid(), request.StrategyId, 1, request.Symbol, request.Side, request.Entry, request.Stop, request.Target, request.Spread, DateTimeOffset.UtcNow, 1, "Manual demo simulation");
+    var metadata = new SymbolMetadata(request.Symbol, request.TickSize, request.TickValue, 1, request.VolumeMin, request.VolumeMax, request.VolumeStep);
+    return coordinator.Submit(trade, metadata, new(request.Equity, 0, []), request.ExposureGroup, DateTimeOffset.UtcNow);
+});
+
+app.Run();
+
+static Task RecordSystemEvent(EventRepository events, SystemStateSnapshot snapshot, string type) => events.AppendSystemEventAsync(new SystemEventRecord { OccurredAt = snapshot.ChangedAt, Severity = type.StartsWith("EMERGENCY", StringComparison.Ordinal) ? "Critical" : "Information", EventType = type, Detail = snapshot.Reason });
+
+public sealed record InstrumentMappingRequest(Guid Id, string LogicalSymbol, string? BrokerSymbol, bool Enabled);
+public sealed record TradeRequest(string StrategyId, string Symbol, Side Side, decimal Entry, decimal Stop, decimal Target, decimal Spread, decimal Equity, decimal TickSize, decimal TickValue, decimal VolumeMin, decimal VolumeMax, decimal VolumeStep, string ExposureGroup);
+public partial class Program;

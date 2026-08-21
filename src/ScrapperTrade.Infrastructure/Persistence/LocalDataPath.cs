@@ -4,6 +4,10 @@ public static class LocalDataPath
 {
     public static string GetDatabasePath(string? localApplicationData = null)
     {
+        var explicitDataDirectory = Environment.GetEnvironmentVariable("SCRAPPERTRADE_DATA_DIR");
+        if (string.IsNullOrWhiteSpace(localApplicationData) && !string.IsNullOrWhiteSpace(explicitDataDirectory))
+            return Path.Combine(Path.GetFullPath(explicitDataDirectory), "scrappertrade.db");
+
         var root = localApplicationData;
         if (string.IsNullOrWhiteSpace(root))
             root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
