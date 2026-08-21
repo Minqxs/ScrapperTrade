@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ScrapperTradeApi } from './api';
+import { BrokerSymbol, ScrapperTradeApi, suggestBrokerSymbols } from './api';
 describe('ScrapperTradeApi', () => {
   it('loads typed system state', async () => { const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({mode:'PAUSED',allowsNewEntries:false}),{status:200})); expect(await new ScrapperTradeApi('',fetcher).system()).toEqual({mode:'PAUSED',allowsNewEntries:false}); });
   it('normalizes the current host numeric enum contract', async () => { const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({mode:6}),{status:200})); expect(await new ScrapperTradeApi('',fetcher).system()).toEqual({mode:'EMERGENCY_LOCKED',allowsNewEntries:false}); });
   it('does not replace missing live capabilities with simulator data', async () => { const fetcher=vi.fn().mockResolvedValue(new Response('',{status:404})); await expect(new ScrapperTradeApi('',fetcher).mt5()).rejects.toEqual(expect.objectContaining({status:404})); });
   it('posts emergency stop through the host boundary', async () => { const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({mode:'EMERGENCY_LOCKED',allowsNewEntries:false}),{status:200})); await new ScrapperTradeApi('',fetcher).emergencyStop(); expect(fetcher).toHaveBeenCalledWith('/api/system/emergency-stop',expect.objectContaining({method:'POST'})); });
+  it('preserves an API rejection reason for destructive controls', async()=>{const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({reason:'Verified close workflow unavailable.'}),{status:409}));await expect(new ScrapperTradeApi('',fetcher).closeAll()).rejects.toEqual(expect.objectContaining({status:409,message:'Verified close workflow unavailable.'}));});
+  it('ranks exact and broker-suffixed symbol suggestions and excludes blocked symbols',()=>{const symbol=(name:string,tradeAllowed=true)=>({name,tradeAllowed,description:'',currencyBase:'',currencyProfit:'',digits:2,point:.01,tickSize:.01,tickValue:1,contractSize:1,volumeMinimum:.01,volumeMaximum:1,volumeStep:.01,stopsLevelPoints:0}) satisfies BrokerSymbol;expect(suggestBrokerSymbols('XAUUSD',[symbol('XAUUSDm'),symbol('XAUUSD'),symbol('XAUUSD.bad',false)]).map(x=>x.name)).toEqual(['XAUUSD','XAUUSDm']);});
 });

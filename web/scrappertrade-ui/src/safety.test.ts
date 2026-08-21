@@ -12,5 +12,7 @@ describe('control-centre safety gates', () => {
     expect(confirmationPhrase('close')).toBe('CLOSE ALL');
     expect(destructivePhraseValid('close','EMERGENCY')).toBe(false);
     expect(destructivePhraseValid('close','CLOSE ALL')).toBe(true);
+    expect(destructivePhraseValid('close-position','CLOSE ALL')).toBe(false);
+    expect(destructivePhraseValid('close-position','CLOSE POSITION')).toBe(true);
   });
 });
