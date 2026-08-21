@@ -27,3 +27,10 @@ At most one activation per strategy definition may remain open; SQLite enforces 
 ## Shadow comparison
 
 Only an active champion and validated challenger can enter a shadow comparison. Completing comparison stores champion metrics, challenger metrics, and decision evidence, but does not promote anything. Promotion remains a separate user-confirmed transaction.
+## Deterministic runtime governance
+
+Strategy selection is deterministic and simulator/shadow-only. The selector rejects invalid specifications, user-disabled or paused strategies, incompatible/unknown/abnormal regimes, missing robustness evidence, insufficient out-of-sample samples, and future-dated evidence. Eligible strategies are ranked by a stable evidence score with deterministic tie-breaking. Every candidate receives an immutable assessment and rejection reason in the append-only decision journal.
+
+Rolling monitoring can only leave state unchanged or move an active strategy to `AutomaticallyPaused`. It cannot enable, resume, or promote a strategy. Invalid, unordered, or future performance evidence fails closed to a pause directive.
+
+Champion/challenger comparison produces eligibility evidence, not a promotion. It requires the appropriate roles, a user-enabled active challenger, robustness, minimum out-of-sample and shadow samples, drawdown control, and a minimum shadow-expectancy advantage. Only `GovernanceActor.User` can create the final approval/rejection object. No component in this slice emits execution or broker commands.

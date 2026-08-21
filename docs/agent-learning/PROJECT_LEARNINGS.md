@@ -83,3 +83,11 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Failed approach: Same-close execution would use a price that was unavailable until the signal bar completed and therefore introduced lookahead bias.
 - Affected files or future action: `StrategyValidationEngine.cs`; preserve these semantics when runtime/backtest parity is expanded to additional strategy types.
 - Supersedes: the bootstrap backtester remains a minimal compatibility check, while this engine is the costed validation path.
+
+### 2026-08-21 - Strategy governance is asymmetric
+
+- Context/evidence: Deterministic checks cover regime ranking, immutable replay, user-disabled rejection, performance-envelope pauses, and user-only promotion decisions.
+- Learning/decision: Automation may remove strategy authority by pausing, but it has no inverse enable/resume/promotion operation. Selection journals every candidate rejection, not only the winner.
+- Failed approach: Public construction of an enabled governed strategy weakened the user-ownership boundary; enablement now requires an explicit user actor and journal assessments are defensively frozen.
+- Affected files or future action: `DeterministicStrategyGovernance.cs`; persistence should store the immutable decision and explicit user promotion decision separately.
+- Supersedes: none.
