@@ -4,6 +4,8 @@ import {Activity,AlertTriangle,BarChart3,Check,CircleDollarSign,Gauge,LayoutDash
 import {ApiError,BrokerSymbol,InstrumentMapping,Order,PortfolioRisk,Position,RiskPolicy,ScrapperTradeApi,suggestBrokerSymbols} from './api';
 import {DestructiveAction,confirmationPhrase,destructivePhraseValid} from './safety';
 import './styles.css';
+import {ResearchWorkspace} from './research';
+import {OperationsWorkspace} from './operations';
 const api=new ScrapperTradeApi(import.meta.env.VITE_API_BASE_URL??'');
 type Page='Overview'|'Instruments'|'Positions'|'Risk'; type Load='loading'|'ready'|'error';
 const message=(error:unknown)=>(error as ApiError).message||'The local host did not complete the request.';
@@ -27,4 +29,5 @@ function Policy({label,value}:{label:string;value:string}){return <div><dt>{labe
 const money=(value?:number)=>value==null?'Not reported':new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(value);const percent=(value?:number)=>value==null?'Not reported':`${(value*100).toFixed(2)}%`;
 
 function App(){const [page,setPage]=useState<Page>('Overview'),[menu,setMenu]=useState(false);const items:[Page,React.ElementType][]=[['Overview',LayoutDashboard],['Instruments',Link2],['Positions',CircleDollarSign],['Risk',BarChart3]];return <div className="app"><aside className={menu?'open':''}><div className="brand"><span className="logo"><Gauge/></span><div>SCRAPPER<span>TRADE</span></div><button className="icon mobile-close" onClick={()=>setMenu(false)}><X/></button></div><div className="mode unsafe"><i/><span>PORTFOLIO CONTROL<small>Host verification required</small></span></div><nav>{items.map(([name,Icon])=><button key={name} className={page===name?'active':''} onClick={()=>{setPage(name);setMenu(false)}}><Icon/>{name}</button>)}</nav><div className="side-health"><span><ShieldAlert/> Safety boundary</span><b>UI cannot unlock execution</b><small>All controls call host authority gates</small></div></aside><main><header><button className="icon hamburger" onClick={()=>setMenu(true)}><Menu/></button><div><span>LOCAL PORTFOLIO</span><b>Reconciled state only</b></div></header><section className="content"><div className="title"><div><span className="eyebrow">INSTRUMENTS · POSITIONS · EXPOSURE</span><h1>{page}</h1><p>{page==='Overview'?'Portfolio operations remain subordinate to hard risk and execution safety gates.':`Review and manage ${page.toLowerCase()} using verified host data.`}</p></div></div>{page==='Overview'?<Overview/>:page==='Instruments'?<Instruments/>:page==='Positions'?<Positions/>:<Risk/>}</section></main></div>}
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+const workspace=new URLSearchParams(location.search).get('workspace');
+createRoot(document.getElementById('root')!).render(<React.StrictMode>{workspace==='research'?<ResearchWorkspace/>:workspace==='operations'?<OperationsWorkspace/>:<App/>}</React.StrictMode>);

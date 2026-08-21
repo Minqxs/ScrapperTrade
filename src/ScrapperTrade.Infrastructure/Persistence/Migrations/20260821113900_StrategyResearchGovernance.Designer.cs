@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ScrapperTrade.Infrastructure.Persistence;
 
@@ -10,202 +11,14 @@ using ScrapperTrade.Infrastructure.Persistence;
 namespace ScrapperTrade.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(ScrapperTradeDbContext))]
-    partial class ScrapperTradeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260821113900_StrategyResearchGovernance")]
+    partial class StrategyResearchGovernance
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.18");
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeChunkRecord", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("DocumentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("EndCharacter")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("Ordinal")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("StartCharacter")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Text")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DocumentId", "Ordinal")
-                        .IsUnique();
-
-                    b.ToTable("knowledge_chunks", (string)null);
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeDocumentRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ContentHash")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset?>("DeletedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("IngestedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("MediaType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("OriginalFileName")
-                        .IsRequired()
-                        .HasMaxLength(260)
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("SizeBytes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("SourceId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("StoredRelativePath")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ContentHash")
-                        .IsUnique();
-
-                    b.HasIndex("DeletedAt");
-
-                    b.HasIndex("SourceId");
-
-                    b.ToTable("knowledge_documents", (string)null);
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeDocumentTagRecord", b =>
-                {
-                    b.Property<Guid>("DocumentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("TagId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("DocumentId", "TagId");
-
-                    b.HasIndex("TagId");
-
-                    b.ToTable("knowledge_document_tags", (string)null);
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeIngestionJobRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Detail")
-                        .HasMaxLength(2000)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid?>("DocumentId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ErrorCode")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("OriginalFileName")
-                        .IsRequired()
-                        .HasMaxLength(260)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("knowledge_ingestion_jobs", (string)null);
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeSourceRecord", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("OriginalLocator")
-                        .HasMaxLength(500)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("RetentionDays")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("SourceType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("knowledge_sources", (string)null);
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeTagRecord", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("knowledge_tags", (string)null);
-                });
 
             modelBuilder.Entity("ScrapperTrade.Infrastructure.Persistence.AuditLogRecord", b =>
                 {
@@ -583,47 +396,6 @@ namespace ScrapperTrade.Infrastructure.Persistence.Migrations
                     b.HasIndex("SignalId");
 
                     b.ToTable("trade_events", (string)null);
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeChunkRecord", b =>
-                {
-                    b.HasOne("ScrapperTrade.Infrastructure.Knowledge.KnowledgeDocumentRecord", "Document")
-                        .WithMany("Chunks")
-                        .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Document");
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeDocumentRecord", b =>
-                {
-                    b.HasOne("ScrapperTrade.Infrastructure.Knowledge.KnowledgeSourceRecord", "Source")
-                        .WithMany("Documents")
-                        .HasForeignKey("SourceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Source");
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeDocumentTagRecord", b =>
-                {
-                    b.HasOne("ScrapperTrade.Infrastructure.Knowledge.KnowledgeDocumentRecord", "Document")
-                        .WithMany("DocumentTags")
-                        .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("ScrapperTrade.Infrastructure.Knowledge.KnowledgeTagRecord", "Tag")
-                        .WithMany("DocumentTags")
-                        .HasForeignKey("TagId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Document");
-
-                    b.Navigation("Tag");
                 });
 
             modelBuilder.Entity("ScrapperTrade.Infrastructure.StrategyGovernance.BacktestMetricRecord", b =>
@@ -1109,23 +881,6 @@ namespace ScrapperTrade.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Instrument");
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeDocumentRecord", b =>
-                {
-                    b.Navigation("Chunks");
-
-                    b.Navigation("DocumentTags");
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeSourceRecord", b =>
-                {
-                    b.Navigation("Documents");
-                });
-
-            modelBuilder.Entity("ScrapperTrade.Infrastructure.Knowledge.KnowledgeTagRecord", b =>
-                {
-                    b.Navigation("DocumentTags");
                 });
 
             modelBuilder.Entity("ScrapperTrade.Infrastructure.StrategyGovernance.BacktestMetricRecord", b =>

@@ -32,6 +32,23 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Affected files or future action: `TradingDomain.cs`, `TradingServices.cs`, and persistence repositories/tests.
 - Supersedes: none.
 
+### 2026-08-21 — Offline knowledge files and SQLite FTS
+
+- Context/evidence: Migration-backed tests ingest, deduplicate, search, cite, soft-delete, restore, expire, and purge local UTF-8 documents without a provider or network dependency.
+- Learning/decision: Private inputs use SHA-256 content-addressed paths outside Git; original filenames are metadata only. SQLite FTS5 is maintained by migration-owned triggers, while chunks retain character offsets for inspectable provenance.
+- Failed approach: On Windows, keeping the hash input stream alive until method exit prevented the staging file's atomic move. The stream must close before `File.Move`.
+- Affected files or future action: `Infrastructure/Knowledge`, `OfflineKnowledgeFoundation` migration, and knowledge ingestion architecture documentation.
+
+- Supersedes: none.
+
+### 2026-08-21 — Research evidence is not activation authority
+
+- Context/evidence: Migration-backed governance tests validate candidate provenance, ambiguity blocking, research-only validation, explicit user confirmation, shadow comparison, promotion, and retirement.
+- Learning/decision: `DRAFT -> VALIDATED` belongs to research evidence; `VALIDATED -> ACTIVE`, promotion, and retirement belong to a separate user governance surface and append-only audit. A filtered unique SQLite index enforces one open activation per strategy definition.
+- Failed approach: none.
+- Affected files or future action: `StrategyGovernance` persistence and architecture documentation; preserve this split when APIs and background research orchestration are added.
+- Supersedes: none.
+
 ### 2026-08-21 — MT5 clock domains and local process ownership
 
 - Context/evidence: A live Common Files heartbeat carried `TimeTradeServer()` as Unix time, which was several hours ahead of the host UTC clock. The fail-closed reader correctly rejected it as future-dated.
@@ -50,3 +67,27 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Failed approach (if any):
 - Affected files or future action:
 - Supersedes:
+
+### 2026-08-21 - Shadow scheduler authority boundary
+
+- Context/evidence: Deterministic checks cover user-only enablement, paused-system rejection, risk approval, duplicate evaluation, and state reload after restart.
+- Learning/decision: The initial scheduler ends at a persisted shadow decision and has no execution adapter or MT5 command queue. Idempotency keys bind strategy version, instrument, and market observation time.
+- Failed approach: Relying only on portfolio risk for freshness allowed stale no-signal evaluation. The scheduler now validates freshness and strict candle ordering first.
+- Affected files or future action: `SimulatorStrategyRuntime.cs`, `JsonShadowStrategyStateStore.cs`; future execution promotion must use a separate user-gated boundary.
+- Supersedes: none.
+
+### 2026-08-21 - Backtest time and cost semantics
+
+- Context/evidence: Deterministic checks verify next-bar entry, adverse cost impact, chronological embargoes, non-overlapping walk-forward folds, and fail-closed sample thresholds.
+- Learning/decision: Close-derived signals may first enter at the next bar open. Spread, entry/exit slippage, and commission are separated from gross R; stop/target ambiguity resolves adversely and stop gaps fill at the worse opening price.
+- Failed approach: Same-close execution would use a price that was unavailable until the signal bar completed and therefore introduced lookahead bias.
+- Affected files or future action: `StrategyValidationEngine.cs`; preserve these semantics when runtime/backtest parity is expanded to additional strategy types.
+- Supersedes: the bootstrap backtester remains a minimal compatibility check, while this engine is the costed validation path.
+
+### 2026-08-21 - Strategy governance is asymmetric
+
+- Context/evidence: Deterministic checks cover regime ranking, immutable replay, user-disabled rejection, performance-envelope pauses, and user-only promotion decisions.
+- Learning/decision: Automation may remove strategy authority by pausing, but it has no inverse enable/resume/promotion operation. Selection journals every candidate rejection, not only the winner.
+- Failed approach: Public construction of an enabled governed strategy weakened the user-ownership boundary; enablement now requires an explicit user actor and journal assessments are defensively frozen.
+- Affected files or future action: `DeterministicStrategyGovernance.cs`; persistence should store the immutable decision and explicit user promotion decision separately.
+- Supersedes: none.
