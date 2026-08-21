@@ -14,6 +14,14 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Runtime/backtest semantic sharing is essential to prevent research/runtime drift.
 - Human-only dependencies should be represented as narrow evidence gates so the rest of delivery remains resumable.
 
+### 2026-08-21 — SQLite event ordering
+
+- Context/evidence: EF Core SQLite 8 rejects server-side `ORDER BY` over `DateTimeOffset` values.
+- Learning/decision: Append-only audit and system-event streams use monotonic SQLite integer IDs for deterministic newest-first reads; timestamps remain evidence fields rather than ordering keys.
+- Failed approach: Ordering by `OccurredAt` threw `NotSupportedException` in the migration-backed integration test.
+- Affected files or future action: `Persistence/Repositories.cs`; retain monotonic IDs when extending event storage.
+- Supersedes: none.
+
 ## Entry template
 
 ### YYYY-MM-DD — Topic
