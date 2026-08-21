@@ -1,5 +1,5 @@
 #property copyright "ScrapperTrade"
-#property version   "0.1.0"
+#property version   "1.00"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -135,4 +135,3 @@ int OnInit()
 
 void OnDeinit(const int reason) { EventKillTimer(); }
 void OnTimer() { WriteHeartbeat(); PollCommands(); }
-
