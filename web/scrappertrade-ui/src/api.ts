@@ -15,12 +15,18 @@ export interface AutonomyStatus { mode:'OFF'|'SIMULATOR'|'SHADOW'|'DEMO'; execut
 export interface KnowledgeSource { id:string; title:string; kind:'DOCUMENT'|'VIDEO'|'AUDIO'|'NOTE'; status:'UPLOADED'|'PROCESSING'|'READY'|'FAILED'; fileName?:string; createdAt:string; chunks:number; citationCount:number; error?:string }
 export interface KnowledgeHit { id:string; sourceId:string; sourceTitle:string; excerpt:string; locator:string; score:number }
 export interface ResearchCandidate { id:string; name:string; hypothesis:string; status:'DRAFT'|'NEEDS_EVIDENCE'|'READY_FOR_REVIEW'|'APPROVED_FOR_VALIDATION'|'REJECTED'; sourceCitations:{sourceId:string;sourceTitle:string;locator:string}[]; validationSummary?:string; ambiguities:string[]; createdAt:string }
+export interface AuditRecord { id:number; occurredAt:string; category:string; action:string; outcome:string; detail:string; correlationId?:string }
+export interface SystemEvent { id:number; occurredAt:string; severity:'Information'|'Warning'|'Error'|'Critical'|string; eventType:string; detail:string; correlationId?:string }
+export interface DiagnosticStatus { overall:'HEALTHY'|'DEGRADED'|'UNHEALTHY'|'UNKNOWN'; checkedAt:string; checks:{id:string;label:string;status:'HEALTHY'|'DEGRADED'|'UNHEALTHY'|'UNKNOWN';detail:string;lastSuccessAt?:string;recovery?:string}[] }
+export interface RecoveryStatus { cleanShutdown?:boolean; reconciliationRequired:boolean; queueDepth?:number; staleCommands?:number; lastBackupAt?:string; databaseStatus:string; detail?:string }
+export interface ProviderSetting { id:'MANUAL_CHATGPT'|'LOCAL'|'OPENAI'|string; name:string; enabled:boolean; configured:boolean; optional:boolean; status:string; detail?:string; model?:string }
+export interface ProviderUpdate { enabled:boolean; model?:string }
 const modeNames=['STOPPED','STARTING','RUNNING','PAUSED','MAINTENANCE','DEGRADED','EMERGENCY_LOCKED'] as const;
 const normalizeMode=(mode:string|number):SystemMode=>typeof mode==='number'?(modeNames[mode]??'UNKNOWN'):mode.replace(/([a-z])([A-Z])/g,'$1_$2').toUpperCase();
 const normalizeSystem=(value:{mode:string|number;allowsNewEntries?:boolean}):SystemStatus=>({mode:normalizeMode(value.mode),allowsNewEntries:value.allowsNewEntries??normalizeMode(value.mode)==='RUNNING'});
 export class ApiError extends Error { constructor(public status: number, message: string) { super(message); this.name = 'ApiError'; } }
 export class ScrapperTradeApi {
-  constructor(private readonly baseUrl = '', private readonly fetcher: typeof fetch = fetch) {}
+  constructor(private readonly baseUrl = '', private readonly fetcher: typeof fetch = (input,init)=>fetch(input,init)) {}
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000);
     try {
@@ -60,9 +66,18 @@ export class ScrapperTradeApi {
   uploadKnowledge = (file:File) => { const form=new FormData(); form.append('file',file); return this.request<KnowledgeSource>('/api/knowledge/sources',{method:'POST',body:form}); };
   researchCandidates = () => this.request<ResearchCandidate[]>('/api/research/candidates');
   approveCandidateForValidation = (id:string) => this.request<ResearchCandidate>(`/api/research/candidates/${encodeURIComponent(id)}/approve-validation`,{method:'POST'});
+  audit = () => this.request<AuditRecord[]>('/api/audit');
+  systemEvents = () => this.request<SystemEvent[]>('/api/system/events');
+  diagnostics = () => this.request<DiagnosticStatus>('/api/health/diagnostics');
+  recovery = () => this.request<RecoveryStatus>('/api/recovery/status');
+  providers = () => this.request<ProviderSetting[]>('/api/settings/providers');
+  updateProvider = (id:string,update:ProviderUpdate) => this.request<ProviderSetting>(`/api/settings/providers/${encodeURIComponent(id)}`,{method:'PUT',body:JSON.stringify(update)});
 }
 export const isExplicitSimulator = (search = window.location.search) => import.meta.env.VITE_DATA_MODE === 'simulator' || new URLSearchParams(search).get('mode') === 'simulator';
 const canonical=(value:string)=>value.toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/(MICRO|MINI|PRO|RAW)$/,'').replace(/[._-]?[A-Z]$/,'');
 export const suggestBrokerSymbols=(logical:string,symbols:BrokerSymbol[])=>symbols.filter(x=>x.tradeAllowed).map(symbol=>({symbol,score:symbol.name.toUpperCase()===logical.toUpperCase()?100:canonical(symbol.name)===canonical(logical)?80:symbol.name.toUpperCase().includes(logical.toUpperCase())?60:0})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.symbol.name.localeCompare(b.symbol.name)).map(x=>x.symbol);
 export const validateStrategySpec=(strategy:StrategySpec)=>{const errors:string[]=[];if(!strategy.name.trim())errors.push('Name is required.');if(!strategy.instruments.length)errors.push('At least one instrument is required.');if(!strategy.timeframes.length)errors.push('At least one timeframe is required.');if(!strategy.entry.all.length)errors.push('At least one deterministic entry rule is required.');if(!strategy.exit.stopLoss.trim())errors.push('A stop-loss rule is required.');if(!strategy.exit.takeProfit.trim())errors.push('A take-profit rule is required.');if(strategy.risk.maxRiskFraction<=0||strategy.risk.maxRiskFraction>0.02)errors.push('Strategy risk must be above 0 and no more than 2%.');if(!strategy.sourceIds.length)errors.push('At least one provenance source is required.');return errors;};
 export const chartPath=(values:number[],width=600,height=160)=>{if(values.length<2)return '';const min=Math.min(...values),max=Math.max(...values),span=max-min||1;return values.map((v,i)=>`${i?'L':'M'}${(i/(values.length-1)*width).toFixed(1)},${(height-(v-min)/span*height).toFixed(1)}`).join(' ');};
+export type OperationalPage='Health'|'Events'|'Audit'|'Recovery'|'Providers';
+export const operationalPageFromSearch=(search:string):OperationalPage=>{const page=new URLSearchParams(search).get('page');return page==='Events'||page==='Audit'||page==='Recovery'||page==='Providers'?page:'Health';};
+export const providerPayload=(enabled:boolean,model?:string):ProviderUpdate=>({enabled,...(model?.trim()?{model:model.trim()}: {})});
