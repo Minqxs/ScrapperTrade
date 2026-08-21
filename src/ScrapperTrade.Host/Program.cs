@@ -1,6 +1,8 @@
+using Microsoft.EntityFrameworkCore;
 using ScrapperTrade.Application;
 using ScrapperTrade.Domain;
 using ScrapperTrade.Infrastructure;
+using ScrapperTrade.Infrastructure.Knowledge;
 using ScrapperTrade.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,6 +19,8 @@ builder.Services.AddSingleton(new Mt5CommonFilesHeartbeatReader(commonFilesRoot)
 builder.Services.AddSingleton(new Mt5CommonFilesSymbolReader(commonFilesRoot));
 builder.Services.AddSingleton(new Mt5CommonFilesExecutionSnapshotReader(commonFilesRoot));
 builder.Services.AddSingleton(new Mt5CommonFilesCommandQueue(commonFilesRoot));
+builder.Services.AddSingleton(new KnowledgeFileStore(Path.Combine(Path.GetDirectoryName(databasePath)!, "knowledge", "files")));
+builder.Services.AddSingleton<IShadowStrategyStateStore>(_ => new JsonShadowStrategyStateStore(Path.Combine(Path.GetDirectoryName(databasePath)!, "shadow-decisions.json")));
 builder.Services.AddScoped(_ => new ScrapperTradeDbContext(PersistenceBootstrap.CreateOptions(databasePath)));
 builder.Services.AddScoped<InstrumentRepository>();
 builder.Services.AddScoped<EventRepository>();
@@ -24,6 +28,7 @@ builder.Services.AddScoped<ConfigurationRepository>();
 builder.Services.AddScoped<TradingUniverseRepository>();
 builder.Services.AddScoped<RiskPolicyRepository>();
 builder.Services.AddScoped<PositionRepository>();
+builder.Services.AddScoped<KnowledgeService>();
 
 var app = builder.Build();
 await PersistenceBootstrap.MigrateAsync(databasePath);
@@ -126,6 +131,54 @@ app.MapGet("/api/audit", async (EventRepository events) => await events.ReadAudi
 app.MapPost("/api/positions/close-all", () => Results.Conflict(new { accepted = false, reason = "Position reconciliation and verified close workflow are not available yet." }));
 app.MapPost("/api/positions/{ticket:long}/close", (long ticket) => Results.Conflict(new { accepted = false, ticket, reason = "Close requires persisted attribution and a fresh reconciled broker snapshot." }));
 app.MapPost("/api/strategies/{id}/pause", (string id) => Results.StatusCode(StatusCodes.Status501NotImplemented));
+app.MapGet("/api/autonomy/status", (IShadowStrategyStateStore shadow) =>
+{
+    var decisions = shadow.ReadAll();
+    return Results.Ok(new
+    {
+        mode = "SHADOW",
+        executionEnabled = false,
+        brokerOrdersAllowed = false,
+        scheduler = "deterministic-simulator-only",
+        lastDecisionAt = decisions.LastOrDefault()?.EvaluatedAt,
+        strategies = decisions.GroupBy(x => x.StrategyId).Select(group => new { id = group.Key, name = group.Key, mode = "SHADOW", status = group.Last().Status.ToString().ToUpperInvariant(), reason = group.Last().Reason })
+    });
+});
+
+app.MapGet("/api/knowledge/sources", async (ScrapperTradeDbContext db) =>
+{
+    var documents = await db.KnowledgeDocuments.AsNoTracking().Where(x => x.DeletedAt == null)
+        .Select(x => new { x.Id, x.Title, x.OriginalFileName, x.IngestedAt, Chunks = x.Chunks.Count }).ToListAsync();
+    return documents.OrderByDescending(x => x.IngestedAt).ThenBy(x => x.Id)
+        .Select(x => new { id = x.Id.ToString(), title = x.Title, kind = "DOCUMENT", status = "READY", fileName = x.OriginalFileName, createdAt = x.IngestedAt, chunks = x.Chunks, citationCount = 0, error = (string?)null });
+});
+app.MapGet("/api/knowledge/search", async (string? q, KnowledgeService knowledge) =>
+{
+    var hits = await knowledge.SearchAsync(q ?? string.Empty);
+    return Results.Ok(hits.Select(x => new { id = x.ChunkId.ToString(), sourceId = x.DocumentId.ToString(), sourceTitle = x.DocumentTitle, excerpt = x.Snippet, locator = x.Citation, score = 1m }));
+});
+app.MapPost("/api/knowledge/sources", async (IFormFile file, KnowledgeService knowledge) =>
+{
+    try
+    {
+        await using var stream = file.OpenReadStream();
+        var result = await knowledge.IngestAsync(stream, file.FileName, Path.GetFileNameWithoutExtension(file.FileName), "Local upload", [], DateTimeOffset.UtcNow);
+        return Results.Ok(new { id = result.DocumentId.ToString(), title = Path.GetFileNameWithoutExtension(file.FileName), kind = "DOCUMENT", status = "READY", fileName = file.FileName, createdAt = DateTimeOffset.UtcNow, chunks = result.ChunkCount, citationCount = 0, error = (string?)null });
+    }
+    catch (KnowledgeIngestionException exception)
+    {
+        return Results.BadRequest(new { message = exception.Message, code = exception.Code });
+    }
+}).DisableAntiforgery();
+
+app.MapGet("/api/strategies", () => Results.Ok(Array.Empty<object>()));
+app.MapGet("/api/strategies/{id}", (string id) => Results.NotFound(new { message = $"Strategy '{id}' was not found." }));
+app.MapPut("/api/strategies/{id}", (string id) => Results.StatusCode(StatusCodes.Status501NotImplemented));
+app.MapGet("/api/backtests", () => Results.Ok(Array.Empty<object>()));
+app.MapGet("/api/backtests/{id}", (string id) => Results.NotFound(new { message = $"Backtest '{id}' was not found." }));
+app.MapPost("/api/backtests", () => Results.StatusCode(StatusCodes.Status501NotImplemented));
+app.MapGet("/api/research/candidates", () => Results.Ok(Array.Empty<object>()));
+app.MapPost("/api/research/candidates/{id}/approve-validation", (string id) => Results.NotFound(new { message = $"Research candidate '{id}' was not found." }));
 app.MapPost("/api/trades/simulate", (TradeRequest request, TradeCoordinator coordinator) =>
 {
     var trade = new CandidateTrade(Guid.NewGuid(), request.StrategyId, 1, request.Symbol, request.Side, request.Entry, request.Stop, request.Target, request.Spread, DateTimeOffset.UtcNow, 1, "Manual demo simulation");
