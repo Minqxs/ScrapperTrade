@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emergencyPhraseValid, executionAllowed } from './safety';
+import { confirmationPhrase, destructivePhraseValid, emergencyPhraseValid, executionAllowed } from './safety';
 describe('control-centre safety gates', () => {
   it.each(['REAL','CONTEST','UNKNOWN','DISCONNECTED'])('rejects %s execution', account => expect(executionAllowed(account,false,false)).toBe(false));
   it('requires demo, unlocked, and unpaused state', () => {
@@ -8,4 +8,9 @@ describe('control-centre safety gates', () => {
     expect(executionAllowed('DEMO',false,true)).toBe(false);
   });
   it('requires the exact emergency phrase', () => { expect(emergencyPhraseValid('emergency')).toBe(false); expect(emergencyPhraseValid('EMERGENCY')).toBe(true); });
+  it('uses an action-specific close-all phrase', () => {
+    expect(confirmationPhrase('close')).toBe('CLOSE ALL');
+    expect(destructivePhraseValid('close','EMERGENCY')).toBe(false);
+    expect(destructivePhraseValid('close','CLOSE ALL')).toBe(true);
+  });
 });
