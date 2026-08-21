@@ -90,6 +90,60 @@ string JsonEscape(string value)
    return value;
 }
 
+string UtcIso(const datetime value)
+{
+   MqlDateTime part;
+   TimeToStruct(value, part);
+   return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ", part.year, part.mon, part.day, part.hour, part.min, part.sec);
+}
+
+string PositionSide(const long type) { return type == POSITION_TYPE_BUY ? "Buy" : "Sell"; }
+
+string PendingOrderKind(const long type)
+{
+   if(type == ORDER_TYPE_BUY_LIMIT) return "BuyLimit";
+   if(type == ORDER_TYPE_SELL_LIMIT) return "SellLimit";
+   if(type == ORDER_TYPE_BUY_STOP || type == ORDER_TYPE_BUY_STOP_LIMIT) return "BuyStop";
+   if(type == ORDER_TYPE_SELL_STOP || type == ORDER_TYPE_SELL_STOP_LIMIT) return "SellStop";
+   return "Other";
+}
+
+void WriteExecutionSnapshots()
+{
+   string positions = StringFormat("{\"sequence\":%I64u,\"observedAt\":\"%s\",\"items\":[", sequence, UtcIso(TimeGMT()));
+   bool first = true;
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!first) positions += ",";
+      first = false;
+      positions += StringFormat("{\"ticket\":%I64u,\"symbol\":\"%s\",\"side\":\"%s\",\"volume\":%.10g,\"openPrice\":%.10g,\"stopLoss\":%.10g,\"takeProfit\":%.10g,\"currentPrice\":%.10g,\"profit\":%.10g,\"magicNumber\":%I64d,\"comment\":\"%s\",\"openedAt\":\"%s\"}",
+         ticket, JsonEscape(PositionGetString(POSITION_SYMBOL)), PositionSide(PositionGetInteger(POSITION_TYPE)),
+         PositionGetDouble(POSITION_VOLUME), PositionGetDouble(POSITION_PRICE_OPEN), PositionGetDouble(POSITION_SL),
+         PositionGetDouble(POSITION_TP), PositionGetDouble(POSITION_PRICE_CURRENT), PositionGetDouble(POSITION_PROFIT),
+         PositionGetInteger(POSITION_MAGIC), JsonEscape(PositionGetString(POSITION_COMMENT)), UtcIso((datetime)PositionGetInteger(POSITION_TIME)));
+   }
+   positions += "]}";
+   WriteAtomic(QueuePath("positions.json"), positions);
+
+   string orders = StringFormat("{\"sequence\":%I64u,\"observedAt\":\"%s\",\"items\":[", sequence, UtcIso(TimeGMT()));
+   first = true;
+   for(int j = 0; j < OrdersTotal(); j++)
+   {
+      ulong ticket = OrderGetTicket(j);
+      if(ticket == 0) continue;
+      if(!first) orders += ",";
+      first = false;
+      orders += StringFormat("{\"ticket\":%I64u,\"symbol\":\"%s\",\"kind\":\"%s\",\"volume\":%.10g,\"price\":%.10g,\"stopLoss\":%.10g,\"takeProfit\":%.10g,\"magicNumber\":%I64d,\"comment\":\"%s\",\"createdAt\":\"%s\"}",
+         ticket, JsonEscape(OrderGetString(ORDER_SYMBOL)), PendingOrderKind(OrderGetInteger(ORDER_TYPE)),
+         OrderGetDouble(ORDER_VOLUME_CURRENT), OrderGetDouble(ORDER_PRICE_OPEN), OrderGetDouble(ORDER_SL), OrderGetDouble(ORDER_TP),
+         OrderGetInteger(ORDER_MAGIC), JsonEscape(OrderGetString(ORDER_COMMENT)), UtcIso((datetime)OrderGetInteger(ORDER_TIME_SETUP)));
+   }
+   orders += "]}";
+   WriteAtomic(QueuePath("orders.json"), orders);
+}
+
 void WriteSymbols()
 {
    string payload = "[";
@@ -154,6 +208,8 @@ void ProcessCommand(const string filename)
    bool ok = false;
    if(action == "CLOSE" && ArraySize(fields) >= 9)
       ok = trade.PositionClose((ulong)StringToInteger(fields[8]));
+   else if(action == "CANCEL" && ArraySize(fields) >= 9)
+      ok = trade.OrderDelete((ulong)StringToInteger(fields[8]));
    else if((action == "BUY" || action == "SELL") && ArraySize(fields) >= 8)
    {
       string symbol = fields[3];
@@ -168,9 +224,10 @@ void ProcessCommand(const string filename)
    else { Reject(id, "unsupported-command"); return; }
 
    string reason = ok ? "executed" : trade.ResultRetcodeDescription();
+   reason = JsonEscape(reason);
    WriteAtomic(QueuePath("results\\" + id + ".json"),
-      StringFormat("{\"commandId\":\"%s\",\"accepted\":%s,\"reason\":\"%s\",\"brokerOrder\":%I64u}",
-         id, ok ? "true" : "false", reason, trade.ResultOrder()));
+      StringFormat("{\"commandId\":\"%s\",\"accepted\":%s,\"reason\":\"%s\",\"time\":%I64d,\"brokerOrder\":%I64u}",
+         id, ok ? "true" : "false", reason, (long)TimeGMT(), trade.ResultOrder()));
    Remember(id);
 }
 
@@ -191,8 +248,9 @@ int OnInit()
    LoadLastCommandSequence();
    WriteHeartbeat();
    WriteSymbols();
+   WriteExecutionSnapshots();
    return INIT_SUCCEEDED;
 }
 
 void OnDeinit(const int reason) { EventKillTimer(); }
-void OnTimer() { WriteHeartbeat(); PollCommands(); }
+void OnTimer() { WriteHeartbeat(); WriteExecutionSnapshots(); PollCommands(); }

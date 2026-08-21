@@ -39,7 +39,63 @@ public sealed class PersistenceTests : IAsyncLifetime
         Assert.Contains("instruments", tables);
         Assert.Contains("audit_logs", tables);
         Assert.Contains("system_events", tables);
+        Assert.Contains("broker_symbol_metadata", tables);
+        Assert.Contains("exposure_groups", tables);
+        Assert.Contains("risk_policy_versions", tables);
+        Assert.Contains("risk_policy_changes", tables);
+        Assert.Contains("positions", tables);
+        Assert.Contains("trade_events", tables);
         Assert.Contains("__EFMigrationsHistory", tables);
+    }
+
+    [Fact]
+    public async Task Trading_universe_preserves_permissions_and_broker_metadata()
+    {
+        await PersistenceBootstrap.MigrateAsync(DatabasePath);
+        await using var db = CreateDb();
+        var now = DateTimeOffset.Parse("2026-08-21T12:00:00Z");
+        var instruments = new InstrumentRepository(db);
+        var instrument = new InstrumentRecord { LogicalSymbol = "nas100", Enabled = true, AllowLong = true, AllowShort = false, MaxConcurrentPositions = 2, ExposureGroupCode = "US_TECH", TradingSessionsJson = "[{\"day\":\"Friday\"}]", UpdatedAt = now };
+        await instruments.UpsertAsync(instrument);
+        var universe = new TradingUniverseRepository(db);
+        await universe.UpsertExposureGroupAsync(new ExposureGroupRecord { Code = "us_tech", DisplayName = "US technology indices", MaxRiskFraction = .01m, MaxSameDirectionRiskFraction = .005m, UpdatedAt = now });
+        await universe.UpsertBrokerMetadataAsync(new BrokerSymbolMetadataRecord { InstrumentId = instrument.Id, BrokerSymbol = "USTECm", TickSize = .1m, TickValue = 1m, ContractSize = 1m, VolumeMin = .01m, VolumeMax = 10m, VolumeStep = .01m, ObservedAt = now });
+
+        var saved = Assert.Single(await instruments.ListAsync());
+        Assert.False(saved.AllowShort);
+        Assert.Equal("US_TECH", saved.ExposureGroupCode);
+        Assert.Equal("USTECm", (await db.BrokerSymbolMetadata.AsNoTracking().SingleAsync()).BrokerSymbol);
+    }
+
+    [Fact]
+    public async Task Risk_policy_versions_are_sequential_and_change_audited()
+    {
+        await PersistenceBootstrap.MigrateAsync(DatabasePath);
+        await using var db = CreateDb();
+        var repository = new RiskPolicyRepository(db);
+        var now = DateTimeOffset.Parse("2026-08-21T12:00:00Z");
+        await repository.AddVersionAsync(new RiskPolicyVersionRecord { Version = 1, PolicyJson = "{\"maxRisk\":0.005}", ChangedBy = "USER", ChangeReason = "Initial hard policy", EffectiveAt = now });
+        await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddVersionAsync(new RiskPolicyVersionRecord { Version = 3, PolicyJson = "{}", ChangedBy = "USER", ChangeReason = "Skip", EffectiveAt = now }));
+
+        Assert.Equal(1, (await repository.GetCurrentAsync())!.Version);
+        var change = await db.RiskPolicyChanges.AsNoTracking().SingleAsync();
+        Assert.Equal(0, change.FromVersion);
+        Assert.Equal(1, change.ToVersion);
+        Assert.Equal("USER", change.ChangedBy);
+    }
+
+    [Fact]
+    public async Task Positions_and_trade_events_preserve_reconciliation_evidence()
+    {
+        await PersistenceBootstrap.MigrateAsync(DatabasePath);
+        await using var db = CreateDb();
+        var repository = new PositionRepository(db);
+        var position = new PositionRecord { BrokerPositionId = "12345", LogicalSymbol = "XAUUSD", BrokerSymbol = "XAUUSDm", Side = "BUY", EntryPrice = 2000, StopPrice = 1990, Volume = .1m, RiskAmount = 100, ExposureGroupCode = "METALS", Status = "OPEN", OpenedAt = DateTimeOffset.Parse("2026-08-21T12:00:00Z") };
+        await repository.AddAsync(position);
+        await repository.AppendEventAsync(new TradeEventRecord { PositionId = position.Id, SignalId = Guid.NewGuid(), EventType = "POSITION_RECONCILED", DetailJson = "{\"source\":\"MT5\"}", OccurredAt = position.OpenedAt });
+
+        Assert.Single(await repository.ListOpenAsync());
+        Assert.Equal(position.Id, (await db.TradeEvents.AsNoTracking().SingleAsync()).PositionId);
     }
 
     [Fact]

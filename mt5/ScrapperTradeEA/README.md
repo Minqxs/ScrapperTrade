@@ -15,9 +15,13 @@ Trading is rejected unless all of these are true:
 ScrapperTrade/
   heartbeat.json
   symbols.json
+  positions.json
+  orders.json
   last-command-sequence.txt
   commands/<command-id>.cmd
   results/<command-id>.json
 ```
 
 The host atomically publishes command lines as `id|created-unix|action|symbol|volume|price|stop|target|ticket|sequence|expires-unix`. Result files are durable idempotency markers across EA restarts. The host also refuses expired/future-dated requests and reused IDs. Missing or malformed heartbeat evidence fails closed.
+
+Position and pending-order snapshots are atomically refreshed with the heartbeat sequence. Host-side close-all planning always cancels pending orders before closing positions, then reconciliation compares the resulting broker tickets with locally tracked tickets. `CLOSE` and `CANCEL` remain broker-changing commands and pass the same fresh positive-DEMO and explicit-unlock gates as entries.

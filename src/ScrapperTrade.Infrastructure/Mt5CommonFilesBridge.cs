@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ScrapperTrade.Application;
 
 namespace ScrapperTrade.Infrastructure;
@@ -56,22 +57,26 @@ public sealed class Mt5CommonFilesCommandQueue
 {
     private readonly string commandsDirectory;
     private readonly string resultsDirectory;
+    private readonly Mt5CommonFilesHeartbeatReader heartbeatReader;
 
-    public Mt5CommonFilesCommandQueue(string commonFilesRoot, string queueName = "ScrapperTrade")
+    public Mt5CommonFilesCommandQueue(string commonFilesRoot, string queueName = "ScrapperTrade", TimeSpan? maximumHeartbeatAge = null)
     {
         var root = Path.Combine(commonFilesRoot, queueName);
         commandsDirectory = Path.Combine(root, "commands");
         resultsDirectory = Path.Combine(root, "results");
+        heartbeatReader = new Mt5CommonFilesHeartbeatReader(commonFilesRoot, queueName, maximumHeartbeatAge);
     }
 
     public string Enqueue(Mt5Command command, DateTimeOffset now)
     {
+        var safety = heartbeatReader.Read(now);
+        if (!safety.AllowsOrderTransmission) throw new InvalidOperationException("MT5 command transmission requires fresh, connected, positive-DEMO evidence and an unlocked EA.");
         if (command.CommandId == Guid.Empty) throw new ArgumentException("Command ID is required.", nameof(command));
         if (command.CreatedAt > now.AddSeconds(1) || command.ExpiresAt <= now) throw new InvalidOperationException("Stale or future-dated commands cannot be queued.");
         if (command.Sequence <= 0) throw new ArgumentOutOfRangeException(nameof(command), "Sequence must be positive.");
-        if (command.Action != Mt5CommandAction.Close && (string.IsNullOrWhiteSpace(command.Symbol) || command.Volume <= 0 || command.StopLoss <= 0 || command.TakeProfit <= 0))
+        if (command.Action is Mt5CommandAction.Buy or Mt5CommandAction.Sell && (string.IsNullOrWhiteSpace(command.Symbol) || command.Volume <= 0 || command.StopLoss <= 0 || command.TakeProfit <= 0))
             throw new InvalidOperationException("Entry commands require symbol, volume, stop loss, and take profit.");
-        if (command.Action == Mt5CommandAction.Close && command.Ticket == 0) throw new InvalidOperationException("Close commands require a ticket.");
+        if (command.Action is Mt5CommandAction.Close or Mt5CommandAction.Cancel && command.Ticket == 0) throw new InvalidOperationException("Close and cancel commands require a ticket.");
 
         Directory.CreateDirectory(commandsDirectory);
         Directory.CreateDirectory(resultsDirectory);
@@ -118,6 +123,31 @@ public sealed class Mt5CommonFilesCommandQueue
         var temporaryPath = finalPath + ".tmp-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
         File.WriteAllText(temporaryPath, payload, new UTF8Encoding(false));
         File.Move(temporaryPath, finalPath, false);
+    }
+}
+
+public sealed class Mt5CommonFilesExecutionSnapshotReader
+{
+    private readonly string root;
+    private readonly JsonSerializerOptions options = CreateOptions();
+
+    public Mt5CommonFilesExecutionSnapshotReader(string commonFilesRoot, string queueName = "ScrapperTrade") => root = Path.Combine(commonFilesRoot, queueName);
+
+    public Mt5ExecutionSnapshot<Mt5BrokerPosition>? ReadPositions() => Read<Mt5BrokerPosition>("positions.json");
+    public Mt5ExecutionSnapshot<Mt5BrokerOrder>? ReadOrders() => Read<Mt5BrokerOrder>("orders.json");
+
+    private Mt5ExecutionSnapshot<T>? Read<T>(string name)
+    {
+        try { return JsonSerializer.Deserialize<Mt5ExecutionSnapshot<T>>(File.ReadAllText(Path.Combine(root, name)), options); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException) { return null; }
+    }
+
+
+    private static JsonSerializerOptions CreateOptions()
+    {
+        var result = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        result.Converters.Add(new JsonStringEnumConverter());
+        return result;
     }
 }
 

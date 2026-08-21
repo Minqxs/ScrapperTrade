@@ -11,6 +11,7 @@ internal static class Mt5BridgeDeterministicChecks
         yield return ("mt5 command atomic and idempotent", AtomicIdempotentCommand);
         yield return ("mt5 stale command rejected host side", StaleCommand);
         yield return ("mt5 symbol metadata discovery", SymbolDiscovery);
+        foreach (var check in Mt5ExecutionLifecycleChecks.All()) yield return check;
     }
 
     private static void PositiveDemoHeartbeat()
@@ -57,6 +58,7 @@ internal static class Mt5BridgeDeterministicChecks
             var now = DateTimeOffset.FromUnixTimeSeconds(2_000_000_000);
             var command = new Mt5Command(Guid.NewGuid(), now, now.AddSeconds(10), 1, Mt5CommandAction.Buy, "XAUUSD", .1m, 2000m, 1990m, 2020m);
             var queue = new Mt5CommonFilesCommandQueue(root);
+            Write(root, "ScrapperTrade/heartbeat.json", $"{{\"sequence\":1,\"time\":{now.ToUnixTimeSeconds()},\"accountMode\":\"DEMO\",\"positionMode\":\"HEDGING\",\"connected\":true,\"emergencyLocked\":false}}");
             var path = queue.Enqueue(command, now);
             Equal(true, File.Exists(path));
             Equal(11, File.ReadAllText(path).Split('|').Length);
@@ -70,9 +72,11 @@ internal static class Mt5BridgeDeterministicChecks
         {
             var now = DateTimeOffset.FromUnixTimeSeconds(2_000_000_000);
             var command = new Mt5Command(Guid.NewGuid(), now.AddSeconds(-20), now.AddSeconds(-1), 1, Mt5CommandAction.Close, "", 0, 0, 0, 0, 12);
+            Write(root, "ScrapperTrade/heartbeat.json", $"{{\"sequence\":1,\"time\":{now.ToUnixTimeSeconds()},\"accountMode\":\"DEMO\",\"positionMode\":\"HEDGING\",\"connected\":true,\"emergencyLocked\":false}}");
             Throws<InvalidOperationException>(() => new Mt5CommonFilesCommandQueue(root).Enqueue(command, now));
         });
     }
+
 
     private static void SymbolDiscovery()
     {
