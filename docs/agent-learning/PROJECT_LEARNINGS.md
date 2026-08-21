@@ -50,3 +50,11 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Failed approach (if any):
 - Affected files or future action:
 - Supersedes:
+
+### 2026-08-21 - Shadow scheduler authority boundary
+
+- Context/evidence: Deterministic checks cover user-only enablement, paused-system rejection, risk approval, duplicate evaluation, and state reload after restart.
+- Learning/decision: The initial scheduler ends at a persisted shadow decision and has no execution adapter or MT5 command queue. Idempotency keys bind strategy version, instrument, and market observation time.
+- Failed approach: Relying only on portfolio risk for freshness allowed stale no-signal evaluation. The scheduler now validates freshness and strict candle ordering first.
+- Affected files or future action: `SimulatorStrategyRuntime.cs`, `JsonShadowStrategyStateStore.cs`; future execution promotion must use a separate user-gated boundary.
+- Supersedes: none.

@@ -10,6 +10,7 @@ public static class MarketIntelligenceChecks
         yield return ("regime insufficient is unknown", Unknown);
         yield return ("regime trend direction", Trend);
         yield return ("overnight session deterministic", OvernightSession);
+        foreach (var check in SimulatorStrategyRuntimeChecks.All()) yield return check;
     }
 
     private static void Rsi()
