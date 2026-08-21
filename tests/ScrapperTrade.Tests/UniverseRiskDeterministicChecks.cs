@@ -5,6 +5,7 @@ internal static class UniverseRiskDeterministicChecks
 {
     public static IEnumerable<(string, Action)> All()
     {
+        foreach (var check in QuantValidationChecks.All()) yield return check;
         yield return ("disabled instrument fails closed", Disabled);
         yield return ("direction permission rejects", Direction);
         yield return ("closed session rejects", Session);

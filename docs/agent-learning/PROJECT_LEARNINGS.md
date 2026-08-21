@@ -66,3 +66,11 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Failed approach: Relying only on portfolio risk for freshness allowed stale no-signal evaluation. The scheduler now validates freshness and strict candle ordering first.
 - Affected files or future action: `SimulatorStrategyRuntime.cs`, `JsonShadowStrategyStateStore.cs`; future execution promotion must use a separate user-gated boundary.
 - Supersedes: none.
+
+### 2026-08-21 - Backtest time and cost semantics
+
+- Context/evidence: Deterministic checks verify next-bar entry, adverse cost impact, chronological embargoes, non-overlapping walk-forward folds, and fail-closed sample thresholds.
+- Learning/decision: Close-derived signals may first enter at the next bar open. Spread, entry/exit slippage, and commission are separated from gross R; stop/target ambiguity resolves adversely and stop gaps fill at the worse opening price.
+- Failed approach: Same-close execution would use a price that was unavailable until the signal bar completed and therefore introduced lookahead bias.
+- Affected files or future action: `StrategyValidationEngine.cs`; preserve these semantics when runtime/backtest parity is expanded to additional strategy types.
+- Supersedes: the bootstrap backtester remains a minimal compatibility check, while this engine is the costed validation path.
