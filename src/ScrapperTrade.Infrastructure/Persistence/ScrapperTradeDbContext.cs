@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using ScrapperTrade.Infrastructure.Knowledge;
 
 namespace ScrapperTrade.Infrastructure.Persistence;
 
@@ -15,6 +16,12 @@ public sealed class ScrapperTradeDbContext(DbContextOptions<ScrapperTradeDbConte
     public DbSet<RiskPolicyChangeRecord> RiskPolicyChanges => Set<RiskPolicyChangeRecord>();
     public DbSet<PositionRecord> Positions => Set<PositionRecord>();
     public DbSet<TradeEventRecord> TradeEvents => Set<TradeEventRecord>();
+    public DbSet<KnowledgeSourceRecord> KnowledgeSources => Set<KnowledgeSourceRecord>();
+    public DbSet<KnowledgeDocumentRecord> KnowledgeDocuments => Set<KnowledgeDocumentRecord>();
+    public DbSet<KnowledgeChunkRecord> KnowledgeChunks => Set<KnowledgeChunkRecord>();
+    public DbSet<KnowledgeTagRecord> KnowledgeTags => Set<KnowledgeTagRecord>();
+    public DbSet<KnowledgeDocumentTagRecord> KnowledgeDocumentTags => Set<KnowledgeDocumentTagRecord>();
+    public DbSet<KnowledgeIngestionJobRecord> KnowledgeIngestionJobs => Set<KnowledgeIngestionJobRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -73,6 +80,36 @@ public sealed class ScrapperTradeDbContext(DbContextOptions<ScrapperTradeDbConte
         {
             entity.ToTable("trade_events"); entity.HasKey(x => x.Id); entity.HasIndex(x => x.PositionId); entity.HasIndex(x => x.SignalId); entity.HasIndex(x => x.OccurredAt);
             entity.Property(x => x.EventType).HasMaxLength(100).IsRequired(); entity.Property(x => x.DetailJson).IsRequired();
+        });
+
+        modelBuilder.Entity<KnowledgeSourceRecord>(entity =>
+        {
+            entity.ToTable("knowledge_sources"); entity.HasKey(x => x.Id); entity.Property(x => x.Name).HasMaxLength(300).IsRequired(); entity.Property(x => x.SourceType).HasMaxLength(50).IsRequired(); entity.Property(x => x.OriginalLocator).HasMaxLength(500);
+        });
+        modelBuilder.Entity<KnowledgeDocumentRecord>(entity =>
+        {
+            entity.ToTable("knowledge_documents"); entity.HasKey(x => x.Id); entity.HasIndex(x => x.ContentHash).IsUnique(); entity.HasIndex(x => x.DeletedAt);
+            entity.Property(x => x.Title).HasMaxLength(500).IsRequired(); entity.Property(x => x.OriginalFileName).HasMaxLength(260).IsRequired(); entity.Property(x => x.MediaType).HasMaxLength(100).IsRequired(); entity.Property(x => x.ContentHash).HasMaxLength(64).IsRequired(); entity.Property(x => x.StoredRelativePath).HasMaxLength(500).IsRequired();
+            entity.HasOne(x => x.Source).WithMany(x => x.Documents).HasForeignKey(x => x.SourceId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<KnowledgeChunkRecord>(entity =>
+        {
+            entity.ToTable("knowledge_chunks"); entity.HasKey(x => x.Id); entity.HasIndex(x => new { x.DocumentId, x.Ordinal }).IsUnique(); entity.Property(x => x.Text).IsRequired();
+            entity.HasOne(x => x.Document).WithMany(x => x.Chunks).HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<KnowledgeTagRecord>(entity =>
+        {
+            entity.ToTable("knowledge_tags"); entity.HasKey(x => x.Id); entity.HasIndex(x => x.Name).IsUnique(); entity.Property(x => x.Name).HasMaxLength(100).IsRequired();
+        });
+        modelBuilder.Entity<KnowledgeDocumentTagRecord>(entity =>
+        {
+            entity.ToTable("knowledge_document_tags"); entity.HasKey(x => new { x.DocumentId, x.TagId });
+            entity.HasOne(x => x.Document).WithMany(x => x.DocumentTags).HasForeignKey(x => x.DocumentId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Tag).WithMany(x => x.DocumentTags).HasForeignKey(x => x.TagId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<KnowledgeIngestionJobRecord>(entity =>
+        {
+            entity.ToTable("knowledge_ingestion_jobs"); entity.HasKey(x => x.Id); entity.HasIndex(x => x.Status); entity.Property(x => x.OriginalFileName).HasMaxLength(260).IsRequired(); entity.Property(x => x.Status).HasMaxLength(32).IsRequired(); entity.Property(x => x.ErrorCode).HasMaxLength(100); entity.Property(x => x.Detail).HasMaxLength(2000);
         });
 
         modelBuilder.Entity<AuditLogRecord>(entity =>

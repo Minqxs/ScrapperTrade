@@ -32,6 +32,14 @@ Read before implementation. Add dated, evidence-backed entries; identify superse
 - Affected files or future action: `TradingDomain.cs`, `TradingServices.cs`, and persistence repositories/tests.
 - Supersedes: none.
 
+### 2026-08-21 — Offline knowledge files and SQLite FTS
+
+- Context/evidence: Migration-backed tests ingest, deduplicate, search, cite, soft-delete, restore, expire, and purge local UTF-8 documents without a provider or network dependency.
+- Learning/decision: Private inputs use SHA-256 content-addressed paths outside Git; original filenames are metadata only. SQLite FTS5 is maintained by migration-owned triggers, while chunks retain character offsets for inspectable provenance.
+- Failed approach: On Windows, keeping the hash input stream alive until method exit prevented the staging file's atomic move. The stream must close before `File.Move`.
+- Affected files or future action: `Infrastructure/Knowledge`, `OfflineKnowledgeFoundation` migration, and knowledge ingestion architecture documentation.
+- Supersedes: none.
+
 ### 2026-08-21 — MT5 clock domains and local process ownership
 
 - Context/evidence: A live Common Files heartbeat carried `TimeTradeServer()` as Unix time, which was several hours ahead of the host UTC clock. The fail-closed reader correctly rejected it as future-dated.
